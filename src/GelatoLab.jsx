@@ -229,10 +229,17 @@ function rowData(it) {
 }
 // curva de congelamento: fração de água congelada por temperatura
 function freezingCurve(pacPerKg) {
-  const Ti = -2.2 - ((pacPerKg - 266) / 266) * 1.5; // ponto inicial de congelamento
+  // Coerente com a regra do Corvitto (20 pts de PAC por grau, âncora -11°C = PAC 270).
+  // A temperatura de serviço "ideal" desta receita é onde ela está no ponto (~75% congelado).
+  const tIdeal = -11 - (pacPerKg - 270) / 20; // mesma régua do alvo de PAC
+  // ponto de congelamento inicial: sobe junto com o PAC (mais anticongelante = congela mais tarde)
+  const Ti = -2.0 - (pacPerKg - 270) / 60;
   const Teu = -40;
-  const f = (T) => { if (T >= Ti) return 0; return Math.min(1, Math.sqrt((Ti - T) / (Ti - Teu))); };
-  return { Ti, f };
+  // calibramos a curva para passar por ~75% exatamente em tIdeal
+  const fRaw = (T) => { if (T >= Ti) return 0; return Math.sqrt((Ti - T) / (Ti - Teu)); };
+  const alvoNoIdeal = fRaw(tIdeal) || 0.0001;
+  const f = (T) => { if (T >= Ti) return 0; return Math.min(1, (fRaw(T) / alvoNoIdeal) * 0.75); };
+  return { Ti, f, tIdeal };
 }
 function compute(items, target, opts = {}) {
   const rows = items.map((it) => ({ it, d: rowData(it) }));
@@ -889,12 +896,12 @@ function Curve({ pacPerKg, servingTemp }) {
         {Ti < 0 && Ti > -24 && <g><circle cx={x(Ti)} cy={y(0)} r="4" fill="#fff" stroke={T.ink} strokeWidth="2" /><text x={x(Ti)} y={y(0) - 8} fill={T.ink} fontSize="9" textAnchor="middle" fontFamily="'DM Mono', monospace">{Ti.toFixed(1)}°</text><text x={x(Ti)} y={y(0) - 18} fill={T.soft} fontSize="8" textAnchor="middle">início</text></g>}
         {/* PQO: linha vertical na zona de quenelle */}
         <line x1={pqoX} y1={padT} x2={pqoX} y2={H - padB} stroke={T.gold} strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
-        <text x={pqoX} y={H - padB + 30} fill={T.gold} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">PQO {pqo}°</text>
+        {Math.abs(pqoX - cx) > 46 && <text x={pqoX} y={H - padB + 30} fill={T.gold} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">PQO {pqo}°</text>}
         {/* temperatura de serviço */}
         <line x1={cx} y1={padT} x2={cx} y2={H - padB} stroke={T.straw} strokeWidth="1" strokeDasharray="4 4" />
         <circle cx={cx} cy={cy} r="7" fill={T.straw} /><circle cx={cx} cy={cy} r="7" fill="none" stroke="#fff" strokeWidth="2.5" />
         <text x={cx} y={cy - 12} fill={T.straw} fontSize="11" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">{servPct}%</text>
-        <text x={cx} y={H - padB + 30} fill={T.straw} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">serviço {servingTemp}°</text>
+        <text x={cx} y={H - padB + 30} fill={T.straw} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">{Math.abs(pqoX - cx) > 46 ? `serviço ${servingTemp}°` : `serviço ${servingTemp}° = PQO`}</text>
       </svg>
     </div>
   );
