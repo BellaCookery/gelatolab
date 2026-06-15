@@ -1063,7 +1063,8 @@ export default function GelatoLab({ session }) {
         <img src="/icon-192.png" alt="GelatoLab" style={{ width: 38, height: 38, borderRadius: 9, boxShadow: "0 2px 12px rgba(176,141,63,.35)", display: "block" }} />
         <div>
           <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: 0.3, lineHeight: 1 }}>Gelato<span style={{ color: T.gold }}>Lab</span></div>
-          <div style={{ fontSize: 9.5, letterSpacing: 2.5, textTransform: "uppercase", color: T.goldSoft, fontWeight: 600, marginTop: 2 }}>Balanceamento de autor</div>
+          <div style={{ fontSize: 9.5, letterSpacing: 2.5, textTransform: "uppercase", color: T.goldSoft, fontWeight: 600, marginTop: 2 }}>O laboratório para gelatieri</div>
+          <div style={{ fontSize: 8.5, letterSpacing: 1, color: T.soft, fontStyle: "italic", marginTop: 1 }}>do amador ao profissional</div>
         </div>
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${T.gold}, ${T.goldLine} 40%, transparent)`, marginBottom: 14, borderRadius: 2 }} />

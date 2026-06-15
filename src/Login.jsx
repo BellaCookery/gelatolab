@@ -46,7 +46,8 @@ export default function Login() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: T.bg, padding: 24, fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div style={{ width: "100%", maxWidth: 380, background: "#fff", border: `1px solid ${T.line}`, borderRadius: 20, padding: 28, boxShadow: "0 4px 24px rgba(60,58,54,.08)" }}>
         <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 28, fontWeight: 600, color: T.ink, marginBottom: 2 }}>GelatoLab</div>
-        <div style={{ fontSize: 12.5, letterSpacing: 1, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 22 }}>Balanceamento de autor</div>
+        <div style={{ fontSize: 12.5, letterSpacing: 1, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 3 }}>O laboratório para gelatieri</div>
+        <div style={{ fontSize: 11.5, letterSpacing: 0.5, color: T.soft, fontStyle: "italic", marginBottom: 22 }}>do amador ao profissional</div>
 
         <div style={{ fontSize: 14, color: T.soft, marginBottom: 16 }}>{modo === "entrar" ? "Entre na sua conta para acessar suas receitas." : "Crie sua conta para começar a salvar receitas."}</div>
 
