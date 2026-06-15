@@ -149,7 +149,22 @@ const FAMILY_PARAMS = {
   savorySorbet: { sugars:[6,12],  fat:null,    msnf:null,    other:[2,12], neutro:[0.2,0.6], solids:[24,34], pod:[50,100],  fruit:null,    alcohol:null,  chopped:null },
   liquorCream:  { sugars:[14,20], fat:[6,12],  msnf:[7,11],  other:[0,8],  neutro:[0,0.5], solids:[34,42], pod:[130,200], fruit:null,    alcohol:[1,10], chopped:[0,12] },
 };
-const SUGAR_KINDS = ["sucrose", "dextrose", "invertedSugar", "fructose", "glucose62DE", "glucose38DE", "lactose"];
+// ESCOLAS de balanceamento. Cada escola tem perfis com faixas próprias.
+// SP (%) e AFP (%) são convertidos para a escala interna (pontos/kg) multiplicando por 10,
+// pois %X = (Σ gramas×fator)/peso×100  e  pontos/kg = (Σ gramas×fator)/peso×1000  → pontos = %×10.
+const ESCOLAS = {
+  italiana: {
+    label: "Escola Italiana",
+    unidadePadrao: "pct", // mostra SP/AFP em % por padrão, com pontos embaixo
+    perfis: {
+      it_creme:  { label: "Sorvete de creme", sugars:[16,22], fat:[5,12],  msnf:[7.5,11.5], other:[0,5],  solids:[35,41], pod:[160,200], pac:[260,310], fruit:[20,40], alcohol:[1,10], chopped:[5,10], overrun:[33,35] },
+      it_sorbet: { label: "Sorbet",            sugars:[20,32], fat:[0,4],   msnf:[0,2],      other:[0,5],  solids:[25,35], pod:[170,250], pac:[280,350], fruit:[30,60], alcohol:[1,10], chopped:[5,10], overrun:[33,35] },
+      it_granita:{ label: "Granita",           sugars:[15,20], fat:[0,4],   msnf:[0,2],      other:[0,5],  solids:[15,25], pod:[150,200], pac:[120,170], fruit:[30,60], alcohol:[1,10], chopped:[0,0],  overrun:[0,15] },
+      it_vegano: { label: "Sorvete vegano",    sugars:[16,22], fat:[4,12],  msnf:[0,0.5],    other:[6,16], solids:[35,41], pod:[160,200], pac:[260,310], fruit:[30,60], alcohol:[1,10], chopped:[5,10], overrun:[33,35] },
+      it_pacojet:{ label: "Gelato Pacojet",    sugars:[13,22], fat:[8,18],  msnf:[0,10],     other:[0,8],  solids:[35,40], pod:[100,180], pac:[100,200], fruit:[15,35], alcohol:[1,2],  chopped:[5,10], overrun:[33,35] },
+    },
+  },
+};
 const ALCOHOL_PAC_COEF = 3.7;
 const round = (n, d = 0) => { const f = 10 ** d; return Math.round(n * f) / f; };
 // Rótulos em português para os ingredientes citados nas recomendações de ajuste.
@@ -256,15 +271,27 @@ function compute(items, target, opts = {}) {
   const pacTarget = target.pacOverride ?? pacTargetFor(target.servingTemp, target.family);
   const pacRange = { min: pacTarget - PAC_TOLERANCE, max: pacTarget + PAC_TOLERANCE };
   const ranges = FAMILY_RANGES[target.family];
-  const P = FAMILY_PARAMS[target.family] || FAMILY_PARAMS.cream;
+  // Se houver um perfil de escola ativo, ele SOBREPÕE as faixas da família.
+  const perfilEsc = target.perfilEscola && ESCOLAS[target.escola]?.perfis?.[target.perfilEscola];
+  const P = perfilEsc || FAMILY_PARAMS[target.family] || FAMILY_PARAMS.cream;
+  const mostraPct = target.escola && ESCOLAS[target.escola]?.unidadePadrao === "pct";
   // === PAINEL DE MONITORAMENTO (parâmetros por família) ===
   const pct = (k) => (sum(k) / safeM) * 100;
   // helper: cria uma linha; se a faixa for null, marca como "não se aplica"
-  const row = (key, label, range, val, unit, note, refOverride) => {
-    if (range == null) return { key, label, na: true, val, unit, note };
+  const row = (key, label, range, val, unit, note, refOverride, alt) => {
+    if (range == null) return { key, label, na: true, val, unit, note, alt };
     const [min, max] = range;
-    return { key, label, min, max, ref: refOverride != null ? refOverride : round((min + max) / 2, unit === "" ? 0 : 1), val, unit, note };
+    return { key, label, min, max, ref: refOverride != null ? refOverride : round((min + max) / 2, unit === "" ? 0 : 1), val, unit, note, alt };
   };
+  // monta a exibição dupla para POD/PAC: principal + secundário (pontos <-> %)
+  const dualPod = (pontos) => mostraPct
+    ? { val: round(pontos / 10, 1), unit: "%", range: P.pod ? [round(P.pod[0] / 10, 1), round(P.pod[1] / 10, 1)] : null, altTxt: `POD ${Math.round(pontos)}`, altRange: P.pod ? `POD ${P.pod[0]}–${P.pod[1]}` : null }
+    : { val: Math.round(pontos), unit: "", range: P.pod, altTxt: `${round(pontos / 10, 1)}% SP`, altRange: P.pod ? `${round(P.pod[0] / 10, 1)}–${round(P.pod[1] / 10, 1)}% SP` : null };
+  const dualPac = (pontos, rng, ref) => mostraPct
+    ? { val: round(pontos / 10, 1), unit: "%", range: [round(rng.min / 10, 1), round(rng.max / 10, 1)], ref: round(ref / 10, 1), altTxt: `PAC ${Math.round(pontos)}`, altRange: `PAC ${Math.round(rng.min)}–${Math.round(rng.max)}` }
+    : { val: Math.round(pontos), unit: "", range: [rng.min, rng.max], ref, altTxt: `${round(pontos / 10, 1)}% AFP`, altRange: `${round(rng.min / 10, 1)}–${round(rng.max / 10, 1)}% AFP` };
+  const _pod = dualPod(podPerKg);
+  const _pac = dualPac(pacPerKg, pacRange, pacTarget);
   const MON = [
     row("sugars", "Açúcares", P.sugars, round(sugarPct, 1), "%", "sacarose, dextrose…"),
     row("fat", "Gorduras", P.fat, round(fatPct, 1), "%", "creme, gema…"),
@@ -272,12 +299,14 @@ function compute(items, target, opts = {}) {
     row("other", "Outros Sólidos", P.other, round(pct("otherSol"), 1), "%", "exceto leite em pó"),
     row("neutro", "Neutros e Bases", P.neutro, round(pct("neutroG"), 2), "%", "emulsificantes, estabilizantes"),
     row("solids", "Sólidos Totais", P.solids, round(stPct, 1), "%", "gorduras + açúcares + SLNG + outros"),
-    row("pod", "POD", P.pod, round(podPerKg), "", "doçura (pontos/kg)"),
-    row("pac", "PAC", [pacRange.min, pacRange.max], round(pacPerKg), "", `anticongelante · alvo p/ ${target.servingTemp}°C`, pacTarget),
+    row(mostraPct ? "pod" : "pod", mostraPct ? "SP" : "POD", _pod.range, _pod.val, _pod.unit, mostraPct ? "poder de doçura" : "doçura (pontos/kg)", null, { txt: _pod.altTxt, range: _pod.altRange }),
+    row("pac", mostraPct ? "AFP" : "PAC", _pac.range, _pac.val, _pac.unit, mostraPct ? `poder anticongelante · alvo ${target.servingTemp}°C` : `anticongelante · alvo p/ ${target.servingTemp}°C`, _pac.ref, { txt: _pac.altTxt, range: _pac.altRange }),
     row("fruit", "Frutas", P.fruit, round(pct("fruitG"), 1), "%", "fruta, sucos"),
     row("alcohol", "Álcool", P.alcohol, round(pct("alcoholG"), 1), "%", "vinhos, licores…"),
     row("chopped", "Ingredientes Picados", P.chopped, round(pct("choppedG"), 1), "%", "ingredientes picados"),
   ];
+  // Overrun: só referência (o app não calcula ar incorporado pela fórmula)
+  if (P.overrun) MON.push({ key: "overrun", label: "Overrun", min: P.overrun[0], max: P.overrun[1], val: null, unit: "%", note: "ar incorporado · referência", info: true });
   const ack = opts.acknowledgedBelow ?? {};
   const metrics = {
     pac: evalMetric(round(pacPerKg), pacRange, ack.pac),
@@ -287,6 +316,7 @@ function compute(items, target, opts = {}) {
     sugars: evalMetric(round(sugarPct, 1), ranges.sugars, ack.sugars),
   };
   const monitor = MON.map((m) => {
+    if (m.info) return { ...m, status: "info" };
     if (m.na) return { ...m, status: "na" };
     let status = "in";
     if (m.val < m.min) status = "below";
@@ -566,6 +596,7 @@ const MONCOLOR = {
   below: { fill: "#9a6500", bg: "#ffe39c", label: "BAIXO" },
   above: { fill: "#c01f2f", bg: "#ffd2d2", label: "ALTO" },
   na: { fill: "#a59a86", bg: "#efe9dd", label: "—" },
+  info: { fill: "#a59a86", bg: "#f6f1e8", label: "info" },
 };
 const KINDS = ["Gelato", "Sorbetto", "Ghiacciolo", "Granita"];
 const fmt2 = (n) => (n === 0 || n == null ? "—" : round(n).toLocaleString("pt-BR"));
@@ -834,6 +865,17 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
                 </tr>
               );
             }
+            if (m.status === "info") {
+              return (
+                <tr key={m.key} style={{ borderBottom: `1px solid ${T.bg}` }}>
+                  <td style={{ padding: "8px 8px", fontSize: 12.5, color: T.soft }}>{m.label}<span style={{ color: T.soft, fontSize: 11, marginLeft: 6 }}>{m.note}</span></td>
+                  <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: T.soft, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.min}–{m.max}{m.unit}</td>
+                  <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: "#bcb5a3", fontFamily: "'DM Mono', monospace" }}>—</td>
+                  <td style={{ padding: "8px 8px" }}></td>
+                  <td style={{ padding: "8px 8px", textAlign: "right" }}><span style={{ fontSize: 9.5, color: "#bcb5a3" }}>info</span></td>
+                </tr>
+              );
+            }
             // diferença até a borda mais próxima da faixa
             let diff = 0;
             if (m.val < m.min) diff = round(m.val - m.min, 1);
@@ -846,8 +888,8 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
               <React.Fragment key={m.key}>
               <tr style={{ borderBottom: fixTxt ? "none" : `1px solid ${T.bg}`, background: m.status === "in" ? "transparent" : c.bg, borderLeft: `4px solid ${m.status === "in" ? "transparent" : c.fill}` }}>
                 <td style={{ padding: "8px 8px", fontSize: 12.5, color: T.ink, fontWeight: m.status === "in" ? 400 : 600 }}>{m.label}<span style={{ color: T.soft, fontSize: 11, marginLeft: 6 }}>{m.note}</span></td>
-                <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: T.soft, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.min}–{m.max}{m.unit}</td>
-                <td style={{ padding: "8px 8px", fontSize: 13.5, textAlign: "right", color: c.fill, fontWeight: 700, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.val}{m.unit}</td>
+                <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: T.soft, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.min}–{m.max}{m.unit}{m.alt && m.alt.range && <div style={{ fontSize: 9.5, color: "#bcb5a3" }}>{m.alt.range}</div>}</td>
+                <td style={{ padding: "8px 8px", fontSize: 13.5, textAlign: "right", color: c.fill, fontWeight: 700, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.val}{m.unit}{m.alt && m.alt.txt && <div style={{ fontSize: 9.5, color: "#bcb5a3", fontWeight: 400 }}>{m.alt.txt}</div>}</td>
                 <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: diff === 0 ? T.soft : c.fill, fontWeight: diff === 0 ? 400 : 700, fontFamily: "'DM Mono', monospace" }}>{diffTxt}</td>
                 <td style={{ padding: "8px 8px", textAlign: "right" }}>
                   <span style={{ fontSize: 10.5, background: c.fill, color: "#fff", padding: "3px 11px", borderRadius: 6, fontWeight: 700, letterSpacing: 0.5 }}>{c.label}</span>
@@ -1036,6 +1078,8 @@ export default function GelatoLab({ session }) {
   const [db, setDb] = useState(INGREDIENTS);
   const [servingTemp, setServingTemp] = useState(-11);
   const [family, setFamily] = useState("cream");
+  const [escola, setEscola] = useState(""); // "" = padrão (faixas por família/Corvitto)
+  const [perfilEscola, setPerfilEscola] = useState("");
   const [kind, setKind] = useState("Gelato");
   const [targetWeight, setTargetWeight] = useState(1000);
   const [recipeName, setRecipeName] = useState("Nova receita");
@@ -1097,7 +1141,7 @@ export default function GelatoLab({ session }) {
   };
 
   const liveItems = items.map((it) => ({ ingredient: ingFromDb(it.ingredient.id) || it.ingredient, grams: it.grams }));
-  const r = useMemo(() => compute(liveItems, { servingTemp, family }, { method }), [items, servingTemp, family, db, method]);
+  const r = useMemo(() => compute(liveItems, { servingTemp, family, escola, perfilEscola }, { method }), [items, servingTemp, family, escola, perfilEscola, db, method]);
   const scale = r.totalGrams > 0 ? targetWeight / r.totalGrams : 1;
   // recomendação de gramas dirigida pela TEMPERATURA: aplica o swap de PAC virtualmente
   // e devolve, por ingrediente, o novo peso sugerido (para mostrar na ficha como "→ X")
@@ -1445,6 +1489,18 @@ export default function GelatoLab({ session }) {
           <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
             <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>FAMÍLIA</div>
             <select value={family} onChange={(e) => setFamily(e.target.value)} style={sel}>{allFamilies.map((f) => <option key={f.id} value={f.id}>{f.label}{f.locked ? "" : " ✎"}</option>)}</select>
+          </div>
+          <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
+            <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>ESCOLA / MÉTODO</div>
+            <select value={escola} onChange={(e) => { const v = e.target.value; setEscola(v); const prim = v && ESCOLAS[v] ? Object.keys(ESCOLAS[v].perfis)[0] : ""; setPerfilEscola(prim); }} style={{ ...sel, marginBottom: escola ? 7 : 0 }}>
+              <option value="">Padrão (faixas por família)</option>
+              {Object.entries(ESCOLAS).map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
+            </select>
+            {escola && ESCOLAS[escola] && (
+              <select value={perfilEscola} onChange={(e) => setPerfilEscola(e.target.value)} style={sel}>
+                {Object.entries(ESCOLAS[escola].perfis).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+              </select>
+            )}
           </div>
         </div>
 
