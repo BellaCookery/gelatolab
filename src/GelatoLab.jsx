@@ -1,30 +1,29 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase, listarReceitas, salvarReceita, apagarReceita, linhaParaApp } from "./supabase";
 
-const MODELO_CSV = `receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite integral,560
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Creme 35%,120
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite em pó desnatado,55
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Sacarose,130
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Dextrose,30
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Estabilizante/neutro,5
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Gema de ovo,100
-Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Água,330
-Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Sacarose,180
-Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Dextrose,40
-Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Estabilizante/neutro,5
-Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Morango,445
+const MODELO_CSV = `receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas,preparo,observacoes
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite integral,560,"Misturar os pós (açúcares, leite em pó, neutro). Aquecer o leite e o creme a 40°C, juntar os pós, pasteurizar a 85°C. Maturar 6-12h na geladeira. Mantecar.","Base clássica. Pode adicionar fava de baunilha na pasteurização."
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Creme 35%,120,,
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite em pó desnatado,55,,
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Sacarose,130,,
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Dextrose,30,,
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Estabilizante/neutro,5,,
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Gema de ovo,100,,
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Água,330,"Misturar açúcares e neutro. Dissolver na água morna. Juntar a fruta batida. Maturar e mantecar.","Sorbet sem leite, naturalmente vegano."
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Sacarose,180,,
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Dextrose,40,,
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Estabilizante/neutro,5,,
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Morango,445,,
 `;
 const PROMPT_CONVERSAO = `PROMPT PARA CONVERTER SUAS RECEITAS (cole no ChatGPT, Claude, Gemini, etc.)
 =================================================================================
 
 Como usar:
 1. Copie TODO o texto abaixo (da linha "INÍCIO DO PROMPT" até o fim).
-2. Cole numa IA (ChatGPT, Claude, Gemini…).
-3. Logo abaixo, cole as suas receitas — do jeito que você tiver (texto, tabela,
-   copiado do Excel, etc.).
+2. Cole numa IA (ChatGPT, Claude, Gemini...).
+3. Logo abaixo, cole as suas receitas - do jeito que você tiver (texto, tabela, PDF/Excel).
 4. A IA vai devolver uma tabela CSV no formato certo.
-5. Salve essa tabela como arquivo .csv e suba no GelatoLab em "Importar receitas".
+5. Salve como arquivo .csv e suba no GelatoLab em "Importar receitas".
 
 ---------------------------------------------------------------------------------
 INÍCIO DO PROMPT
@@ -33,54 +32,51 @@ INÍCIO DO PROMPT
 Você vai converter receitas de gelato/sorvete para um formato CSV exato, para
 importação num aplicativo. Siga estas regras à risca:
 
-1) Devolva APENAS o CSV, sem comentários, sem explicação, sem \`\`\`.
+1) Devolva APENAS o CSV, sem comentários, sem explicação, sem crases.
 
 2) A primeira linha deve ser EXATAMENTE este cabeçalho:
-receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas
+receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas,preparo,observacoes
 
-3) Cada INGREDIENTE de cada receita vira UMA linha. Uma receita com 7 ingredientes
-   gera 7 linhas, repetindo nas 6 primeiras colunas o nome da receita, família,
-   tipo, temperatura, equipamento e chef.
+3) Cada INGREDIENTE de cada receita vira UMA linha, repetindo nas colunas de
+   cabeçalho (receita, familia, tipo, temperatura, equipamento, chef) o mesmo valor.
 
-4) Coluna "familia": use EXATAMENTE um destes valores (o mais próximo da receita):
+4) As colunas "preparo" e "observacoes" são textos longos. Preencha APENAS na
+   PRIMEIRA linha de cada receita (nas demais, deixe vazias). Como têm vírgulas,
+   coloque o texto SEMPRE entre aspas duplas "assim".
+   - "preparo": o modo de preparo / passo a passo.
+   - "observacoes": dicas, notas, sugestões de servir, variações.
+   Se a receita não tiver, deixe vazio.
+
+5) Coluna "familia": use EXATAMENTE um destes valores (o mais próximo):
    Creme branco, Creme de iogurte, Creme de gema, Creme de fruta,
    Creme de chocolate, Creme de frutos secos, Creme de chá/especiarias,
    Creme de licor, Creme salgado, Sorbet de fruta, Sorbet cítrico,
    Sorbet de chá/especiarias, Sorbet de licor, Sorbet salgado.
-   (Sorvete com leite/creme = "Creme ..."; sorvete de fruta sem leite = "Sorbet ...".)
+   (Com leite/creme = "Creme ..."; fruta sem leite = "Sorbet ...".)
 
-5) Coluna "tipo": use um destes: Gelato, Sorbetto, Ghiacciolo, Granita.
-   (Com leite = Gelato; fruta sem leite = Sorbetto; picolé de água = Ghiacciolo;
-   raspado = Granita.)
+6) Coluna "tipo": Gelato, Sorbetto, Ghiacciolo ou Granita.
 
-6) Coluna "temperatura": número da temperatura de serviço em °C, negativo,
-   sem o símbolo. Se a receita não disser, use -11. Exemplos: -11, -14, -18.
+7) Coluna "temperatura": número negativo em °C, sem símbolo. Se não disser, -11.
 
-7) Coluna "equipamento": use um destes: tradicional, pacojet, ninja, caseiro.
-   Se não souber, use tradicional.
+8) Coluna "equipamento": tradicional, pacojet, ninja ou caseiro. Se não souber, tradicional.
 
-8) Coluna "chef": o nome do autor da receita, se houver; senão deixe vazio.
+9) Coluna "chef": nome do autor, se houver; senão vazio.
 
-9) Coluna "ingrediente": o nome do ingrediente. Padronize nomes comuns assim:
-   - açúcar / açúcar comum  -> Sacarose
-   - açúcar invertido / trimoline -> Açúcar invertido
-   - glicose / dextrose -> Dextrose
-   - leite -> Leite integral
-   - creme de leite / nata -> Creme 35%
-   - leite em pó -> Leite em pó desnatado
-   - neutro / estabilizante / liga neutra -> Estabilizante/neutro
-   - gema -> Gema de ovo
-   - água -> Água
-   Para frutas, use o nome da fruta (ex.: Morango, Limão, Manga).
-   Mantenha outros ingredientes com nome claro e simples.
+10) Coluna "ingrediente": padronize nomes comuns:
+   açúcar/saccarosio -> Sacarose ; glicose/destrosio -> Dextrose ;
+   açúcar invertido/trimoline -> Açúcar invertido ; latte intero/leite -> Leite integral ;
+   panna/nata -> Creme 35% ; latte in polvere -> Leite em pó desnatado ;
+   neutro/estabilizante -> Estabilizante/neutro ; tuorlo/gema -> Gema de ovo ;
+   acqua -> Água ; inulina -> Inulina.
+   Para frutas, use o nome (Morango, Limão, Manga, Kiwi...).
 
-10) Coluna "gramas": só o número, em gramas. Se a receita estiver em porcentagem,
-    converta para gramas considerando o total de 1000 g.
+11) Coluna "gramas": só o número, em gramas, usando a coluna de 1000 g.
+    Se estiver em %, converta para 1000 g de total.
 
 EXEMPLO de saída correta:
-receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,,Leite integral,560
-Creme de baunilha,Creme branco,Gelato,-11,tradicional,,Sacarose,130
+receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas,preparo,observacoes
+Kiwi,Creme de fruta,Gelato,-14,tradicional,,Leite integral,383,"Misturar os pós. Juntar leite e creme. Maturar 6-12h. Juntar a fruta e mantecar.","Fazer a frio preserva o sabor da fruta."
+Kiwi,Creme de fruta,Gelato,-14,tradicional,,Sacarose,105,,
 
 Agora converta as receitas que eu colar a seguir:
 
@@ -88,10 +84,9 @@ Agora converta as receitas que eu colar a seguir:
 FIM DO PROMPT
 ---------------------------------------------------------------------------------
 
-⚠️ IMPORTANTE — CONFIRA ANTES DE IMPORTAR:
-A IA é ótima para organizar, mas pode errar um número ou um nome. Antes de subir,
-dê uma olhada rápida na tabela: os pesos batem? Os ingredientes certos? Numa receita
-de gelato, um número errado estraga o resultado. A conferência leva 1 minuto e vale a pena.
+IMPORTANTE - CONFIRA ANTES DE IMPORTAR:
+A IA pode errar um número ou nome. Antes de subir, confira: os pesos batem? Os
+ingredientes certos? Num gelato, um número errado estraga o resultado.
 `;
 
 
@@ -1150,15 +1145,39 @@ export default function GelatoLab({ session }) {
     if (!m) m = db.find((x) => normaliza(x.name).includes(n) || n.includes(normaliza(x.name)));
     return m ? m.id : null;
   };
+  const parseLinhaCSV = (linha) => {
+    // parser que respeita aspas: campos entre " " podem conter vírgula e quebra
+    const out = []; let cur = ""; let dentro = false;
+    for (let i = 0; i < linha.length; i++) {
+      const ch = linha[i];
+      if (ch === '"') {
+        if (dentro && linha[i + 1] === '"') { cur += '"'; i++; }
+        else dentro = !dentro;
+      } else if (ch === "," && !dentro) { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map((s) => s.trim());
+  };
   const parseCSV = (txt) => {
-    const linhas = txt.replace(/\r/g, "").split("\n").filter((l) => l.trim());
-    const head = linhas[0].split(",").map((h) => normaliza(h));
+    // junta o arquivo respeitando aspas (texto longo pode ter quebras de linha)
+    const linhas = [];
+    let buf = ""; let dentro = false;
+    const raw = txt.replace(/\r/g, "");
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (ch === '"') dentro = !dentro;
+      if (ch === "\n" && !dentro) { if (buf.trim()) linhas.push(buf); buf = ""; }
+      else buf += ch;
+    }
+    if (buf.trim()) linhas.push(buf);
+    const head = parseLinhaCSV(linhas[0]).map((h) => normaliza(h));
     const col = (nome) => head.indexOf(nome);
-    const ci = { receita: col("receita"), familia: col("familia"), tipo: col("tipo"), temperatura: col("temperatura"), equipamento: col("equipamento"), chef: col("chef"), ingrediente: col("ingrediente"), gramas: col("gramas") };
+    const ci = { receita: col("receita"), familia: col("familia"), tipo: col("tipo"), temperatura: col("temperatura"), equipamento: col("equipamento"), chef: col("chef"), ingrediente: col("ingrediente"), gramas: col("gramas"), preparo: col("preparo"), observacoes: col("observacoes") };
     const grupos = {};
     const naoEncontrados = new Set();
     for (let i = 1; i < linhas.length; i++) {
-      const c = linhas[i].split(",");
+      const c = parseLinhaCSV(linhas[i]);
       const nomeR = (c[ci.receita] || "").trim();
       if (!nomeR) continue;
       if (!grupos[nomeR]) grupos[nomeR] = {
@@ -1168,6 +1187,8 @@ export default function GelatoLab({ session }) {
         servingTemp: parseInt(c[ci.temperatura]) || -11,
         equipment: (c[ci.equipamento] || "tradicional").trim().toLowerCase(),
         chef: (c[ci.chef] || "").trim(),
+        prep: ci.preparo >= 0 ? (c[ci.preparo] || "").trim() : "",
+        notes: ci.observacoes >= 0 ? (c[ci.observacoes] || "").trim() : "",
         items: [],
       };
       const ingId = ingIdPorNome(c[ci.ingrediente]);
