@@ -855,24 +855,46 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
 
 // ---- Curva de congelamento (tema claro) ----
 function Curve({ pacPerKg, servingTemp }) {
-  const { f } = freezingCurve(pacPerKg);
-  const W = 440, H = 200, padL = 40, padB = 30, padT = 12, padR = 12;
+  const { f, Ti } = freezingCurve(pacPerKg);
+  const W = 440, H = 230, padL = 40, padB = 44, padT = 14, padR = 12;
   const x = (t) => padL + ((t - 0) / (-24 - 0)) * (W - padL - padR);
   const y = (fr) => padT + (1 - fr) * (H - padT - padB);
   const pts = []; for (let t = 0; t >= -24; t -= 0.5) pts.push(`${x(t)},${y(f(t))}`);
   const cur = f(servingTemp), cx = x(servingTemp), cy = y(cur);
+  // PQO: temperatura onde ~75% da água está congelada (ponto ótimo de quenelle)
+  let pqo = -11; for (let t = 0; t >= -24; t -= 0.1) { if (f(t) >= 0.75) { pqo = Math.round(t * 10) / 10; break; } }
+  const pqoX = x(pqo);
+  // zona de quenelle ótima: 70%–80% congelado (faixa dourada)
+  // zona de arenosidade: acima de ~88% congelado o risco de cristais cresce
+  const arenY = y(0.90);
+  const servPct = Math.round(cur * 100);
+  const aviso = cur > 0.82 ? "duro / risco de arenosidade" : cur < 0.55 ? "mole para bolear" : "bom para servir";
+  const avisoCor = (cur > 0.82 || cur < 0.55) ? "#c01f2f" : "#1a7d54";
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)", height: "100%", boxSizing: "border-box" }}>
       <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 2 }}>Curva de congelamento</div>
-      <div style={{ fontSize: 12.5, color: T.soft, marginBottom: 10 }}>A {servingTemp}°C, cerca de <b style={{ color: T.gold }}>{Math.round(cur * 100)}%</b> da água está congelada.</div>
+      <div style={{ fontSize: 12.5, color: T.soft, marginBottom: 10 }}>A {servingTemp}°C, cerca de <b style={{ color: T.gold }}>{servPct}%</b> da água está congelada — <b style={{ color: avisoCor }}>{aviso}</b>.</div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%">
         {[0, 25, 50, 75, 100].map((p) => (<g key={p}><line x1={padL} y1={y(p / 100)} x2={W - padR} y2={y(p / 100)} stroke={T.line} strokeWidth="1" /><text x={padL - 6} y={y(p / 100) + 4} fill={T.soft} fontSize="10" textAnchor="end" fontFamily="'DM Mono', monospace">{p}%</text></g>))}
         {[0, -6, -11, -18, -24].map((t) => <text key={t} x={x(t)} y={H - padB + 16} fill={T.soft} fontSize="10" textAnchor="middle" fontFamily="'DM Mono', monospace">{t}°</text>)}
-        <rect x={padL} y={y(0.80)} width={W - padL - padR} height={y(0.65) - y(0.80)} fill={T.goldBg} />
+        {/* zona de arenosidade (muito congelado) */}
+        <rect x={padL} y={padT} width={W - padL - padR} height={arenY - padT} fill="#fbeaea" />
+        <text x={W - padR - 4} y={padT + 11} fill="#c87a7a" fontSize="8.5" textAnchor="end" fontStyle="italic">zona de arenosidade</text>
+        {/* zona de quenelle ótima (PQO): 70-80% */}
+        <rect x={padL} y={y(0.80)} width={W - padL - padR} height={y(0.70) - y(0.80)} fill={T.goldBg} />
+        <text x={padL + 4} y={y(0.70) - 3} fill={T.gold} fontSize="8.5" fontStyle="italic">zona de quenelle (PQO)</text>
+        {/* curva */}
         <path d={"M" + pts.join(" L")} fill="none" stroke={T.gold} strokeWidth="2.5" strokeLinecap="round" />
+        {/* ponto de congelamento (onde começa a congelar) */}
+        {Ti < 0 && Ti > -24 && <g><circle cx={x(Ti)} cy={y(0)} r="4" fill="#fff" stroke={T.ink} strokeWidth="2" /><text x={x(Ti)} y={y(0) - 8} fill={T.ink} fontSize="9" textAnchor="middle" fontFamily="'DM Mono', monospace">{Ti.toFixed(1)}°</text><text x={x(Ti)} y={y(0) - 18} fill={T.soft} fontSize="8" textAnchor="middle">início</text></g>}
+        {/* PQO: linha vertical na zona de quenelle */}
+        <line x1={pqoX} y1={padT} x2={pqoX} y2={H - padB} stroke={T.gold} strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
+        <text x={pqoX} y={H - padB + 30} fill={T.gold} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">PQO {pqo}°</text>
+        {/* temperatura de serviço */}
         <line x1={cx} y1={padT} x2={cx} y2={H - padB} stroke={T.straw} strokeWidth="1" strokeDasharray="4 4" />
         <circle cx={cx} cy={cy} r="7" fill={T.straw} /><circle cx={cx} cy={cy} r="7" fill="none" stroke="#fff" strokeWidth="2.5" />
-        <text x={cx} y={cy - 12} fill={T.straw} fontSize="11" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">{Math.round(cur * 100)}%</text>
+        <text x={cx} y={cy - 12} fill={T.straw} fontSize="11" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">{servPct}%</text>
+        <text x={cx} y={H - padB + 30} fill={T.straw} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">serviço {servingTemp}°</text>
       </svg>
     </div>
   );
