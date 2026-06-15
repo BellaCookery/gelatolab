@@ -93,3 +93,29 @@ export async function salvarPreferencia(donoId, campo, valor) {
   const { error } = await supabase.from("preferencias").upsert(linha);
   if (error) throw error;
 }
+
+// ---- Escolas / métodos de balanceamento ----
+export async function listarEscolas(donoId) {
+  const { data, error } = await supabase
+    .from("escolas").select("*").eq("dono", donoId).order("criado_em");
+  if (error) throw error;
+  return data || [];
+}
+
+export async function criarEscola(donoId, nome) {
+  const { data, error } = await supabase
+    .from("escolas").insert({ dono: donoId, nome, dados: { familias: [] } }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function salvarEscola(id, nome, dados) {
+  const { error } = await supabase
+    .from("escolas").update({ nome, dados, atualizado_em: new Date().toISOString() }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function apagarEscola(id) {
+  const { error } = await supabase.from("escolas").delete().eq("id", id);
+  if (error) throw error;
+}
