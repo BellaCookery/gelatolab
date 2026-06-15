@@ -149,6 +149,7 @@ const FAMILY_PARAMS = {
   savorySorbet: { sugars:[6,12],  fat:null,    msnf:null,    other:[2,12], neutro:[0.2,0.6], solids:[24,34], pod:[50,100],  fruit:null,    alcohol:null,  chopped:null },
   liquorCream:  { sugars:[14,20], fat:[6,12],  msnf:[7,11],  other:[0,8],  neutro:[0,0.5], solids:[34,42], pod:[130,200], fruit:null,    alcohol:[1,10], chopped:[0,12] },
 };
+const SUGAR_KINDS = ["sucrose", "dextrose", "invertedSugar", "fructose", "glucose62DE", "glucose38DE", "lactose"];
 // ESCOLAS de balanceamento. Cada escola tem perfis com faixas próprias.
 // SP (%) e AFP (%) são convertidos para a escala interna (pontos/kg) multiplicando por 10,
 // pois %X = (Σ gramas×fator)/peso×100  e  pontos/kg = (Σ gramas×fator)/peso×1000  → pontos = %×10.
