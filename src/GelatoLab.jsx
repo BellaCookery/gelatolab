@@ -1466,42 +1466,45 @@ export default function GelatoLab({ session }) {
           </div>
         </div>
 
-        <div style={{ background: "#fff", borderRadius: 14, padding: "12px 16px", border: `1px solid ${T.line}`, marginBottom: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 10, letterSpacing: 1, color: T.gold, fontWeight: 700 }}>EQUIPAMENTO</span>
-          <select value={equipment} onChange={(e) => { const id = e.target.value; setEquipment(id); const eq = EQUIPMENT.find((x) => x.id === id); if (eq) setServingTemp(eq.temp); }} style={{ ...sel, width: "auto", minWidth: 240, padding: "7px 12px", fontSize: 13 }}>
-            {EQUIPMENT.map((eq) => <option key={eq.id} value={eq.id}>{eq.label}</option>)}
-          </select>
-          <span style={{ fontSize: 11.5, color: T.soft, flex: 1, minWidth: 200 }}>{EQUIPMENT.find((x) => x.id === equipment)?.note}</span>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>1 · TEMPERATURA</div>
-            <select value={servingTemp} onChange={(e) => setServingTemp(Number(e.target.value))} style={sel}>{TEMPS.map((t) => <option key={t} value={t}>{t} °C</option>)}</select>
-          </div>
-          <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>2 · PESO FINAL</div>
-            <select value={targetWeight} onChange={(e) => setTargetWeight(Number(e.target.value))} style={sel}>{WEIGHTS.map((w) => <option key={w} value={w}>{w >= 1000 ? `${w / 1000} kg` : `${w} g`}</option>)}</select>
-          </div>
-          <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>3 · PREPARO</div>
-            <select value={kind} onChange={(e) => setKind(e.target.value)} style={sel}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select>
-          </div>
-          <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>FAMÍLIA</div>
-            <select value={family} onChange={(e) => setFamily(e.target.value)} style={sel}>{allFamilies.map((f) => <option key={f.id} value={f.id}>{f.label}{f.locked ? "" : " ✎"}</option>)}</select>
-          </div>
-          <div style={{ background: "#fff", borderRadius: 14, padding: "11px 13px", border: `1px solid ${T.line}` }}>
-            <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 6, fontWeight: 700 }}>ESCOLA / MÉTODO</div>
-            <select value={escola} onChange={(e) => { const v = e.target.value; setEscola(v); const prim = v && ESCOLAS[v] ? Object.keys(ESCOLAS[v].perfis)[0] : ""; setPerfilEscola(prim); }} style={{ ...sel, marginBottom: escola ? 7 : 0 }}>
-              <option value="">Padrão (faixas por família)</option>
-              {Object.entries(ESCOLAS).map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
-            </select>
-            {escola && ESCOLAS[escola] && (
-              <select value={perfilEscola} onChange={(e) => setPerfilEscola(e.target.value)} style={sel}>
-                {Object.entries(ESCOLAS[escola].perfis).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+        <div style={{ background: "#fff", borderRadius: 14, padding: "10px 14px", border: `1px solid ${T.line}`, marginBottom: 10 }}>
+          <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, fontWeight: 700, marginBottom: 8 }}>MÉTODO CHEFPIER · siga a ordem</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>1 · TEMP. SERVIÇO</div>
+              <select value={servingTemp} onChange={(e) => setServingTemp(Number(e.target.value))} style={sel}>{TEMPS.map((t) => <option key={t} value={t}>{t} °C</option>)}</select>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>2 · EQUIPAMENTO</div>
+              <select value={equipment} onChange={(e) => setEquipment(e.target.value)} style={sel}>{EQUIPMENT.map((eq) => <option key={eq.id} value={eq.id}>{eq.label}</option>)}</select>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>3 · ESCOLA / MÉTODO</div>
+              <select value={escola} onChange={(e) => { const v = e.target.value; setEscola(v); const prim = v && ESCOLAS[v] ? Object.keys(ESCOLAS[v].perfis)[0] : ""; setPerfilEscola(prim); }} style={sel}>
+                <option value="">Padrão (por família)</option>
+                {Object.entries(ESCOLAS).map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
               </select>
-            )}
+            </div>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>4 · TIPO</div>
+              {escola && ESCOLAS[escola] ? (
+                <select value={perfilEscola} onChange={(e) => setPerfilEscola(e.target.value)} style={sel}>
+                  {Object.entries(ESCOLAS[escola].perfis).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                </select>
+              ) : (
+                <select value={family} onChange={(e) => setFamily(e.target.value)} style={sel}>{allFamilies.map((f) => <option key={f.id} value={f.id}>{f.label}{f.locked ? "" : " ✎"}</option>)}</select>
+              )}
+            </div>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>5 · SUBTIPO</div>
+              <select value={kind} onChange={(e) => setKind(e.target.value)} style={sel}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select>
+            </div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.bg}`, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 10.5, color: T.soft }}>{EQUIPMENT.find((x) => x.id === equipment)?.note}</span>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, fontWeight: 700 }}>PESO FINAL</span>
+              <select value={targetWeight} onChange={(e) => setTargetWeight(Number(e.target.value))} style={{ ...sel, width: "auto", minWidth: 110, padding: "7px 10px" }}>{WEIGHTS.map((w) => <option key={w} value={w}>{w >= 1000 ? `${w / 1000} kg` : `${w} g`}</option>)}</select>
+            </span>
           </div>
         </div>
 
