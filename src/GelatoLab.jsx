@@ -1033,6 +1033,75 @@ export default function GelatoLab({ session }) {
   const newRecipe = () => { setCurrentDbId(null); setRecipeName("Nova receita"); setKind("Gelato"); setItems([]); setNotes(""); setPrep(""); setPhoto(null); setSchool("Autoral"); setChef(""); setEquipment("tradicional"); setTab("formula"); };
   const deleteRecipe = async (s) => { try { if (s.dbId) await apagarReceita(s.dbId); await recarregar(); } catch (e) { alert("Não consegui apagar: " + e.message); } };
   const sair = async () => { await supabase.auth.signOut(); };
+
+  // ---- Importação de receitas via CSV ----
+  const [importando, setImportando] = useState(false);
+  const [importMsg, setImportMsg] = useState("");
+  const normaliza = (s) => (s || "").toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const famIdPorNome = (nome) => {
+    const n = normaliza(nome);
+    const f = [...FAMILIES, ...customFams].find((x) => normaliza(x.label) === n || normaliza(x.id) === n);
+    return f ? f.id : "cream";
+  };
+  const ingIdPorNome = (nome) => {
+    const n = normaliza(nome);
+    let m = db.find((x) => normaliza(x.name) === n);
+    if (!m) m = db.find((x) => normaliza(x.name).includes(n) || n.includes(normaliza(x.name)));
+    return m ? m.id : null;
+  };
+  const parseCSV = (txt) => {
+    const linhas = txt.replace(/\r/g, "").split("\n").filter((l) => l.trim());
+    const head = linhas[0].split(",").map((h) => normaliza(h));
+    const col = (nome) => head.indexOf(nome);
+    const ci = { receita: col("receita"), familia: col("familia"), tipo: col("tipo"), temperatura: col("temperatura"), equipamento: col("equipamento"), chef: col("chef"), ingrediente: col("ingrediente"), gramas: col("gramas") };
+    const grupos = {};
+    const naoEncontrados = new Set();
+    for (let i = 1; i < linhas.length; i++) {
+      const c = linhas[i].split(",");
+      const nomeR = (c[ci.receita] || "").trim();
+      if (!nomeR) continue;
+      if (!grupos[nomeR]) grupos[nomeR] = {
+        name: nomeR,
+        family: famIdPorNome(c[ci.familia]),
+        kind: (c[ci.tipo] || "Gelato").trim(),
+        servingTemp: parseInt(c[ci.temperatura]) || -11,
+        equipment: (c[ci.equipamento] || "tradicional").trim().toLowerCase(),
+        chef: (c[ci.chef] || "").trim(),
+        items: [],
+      };
+      const ingId = ingIdPorNome(c[ci.ingrediente]);
+      const g = parseFloat((c[ci.gramas] || "").replace(",", ".")) || 0;
+      if (ingId) grupos[nomeR].items.push({ id: ingId, grams: g });
+      else naoEncontrados.add((c[ci.ingrediente] || "").trim());
+    }
+    return { receitas: Object.values(grupos), naoEncontrados: [...naoEncontrados] };
+  };
+  const onImportCSV = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setImportando(true); setImportMsg("Lendo arquivo…");
+    try {
+      const txt = await file.text();
+      const { receitas, naoEncontrados } = parseCSV(txt);
+      if (!receitas.length) { setImportMsg("Não encontrei receitas no arquivo. Confira o formato."); setImportando(false); return; }
+      let ok = 0;
+      for (const rec of receitas) {
+        rec.targetWeight = rec.items.reduce((s, x) => s + x.grams, 0) || 1000;
+        rec.school = rec.chef ? rec.chef : "Autoral";
+        await salvarReceita({ ...rec, dbId: null }, userId);
+        ok++;
+        setImportMsg(`Importando… ${ok} de ${receitas.length}`);
+      }
+      await recarregar();
+      let msg = `✓ ${ok} receita(s) importada(s)!`;
+      if (naoEncontrados.length) msg += ` Atenção: estes ingredientes não foram reconhecidos e ficaram de fora: ${naoEncontrados.join(", ")}. Adicione-os à mão ou ajuste os nomes na planilha.`;
+      setImportMsg(msg);
+    } catch (err) {
+      setImportMsg("Erro ao importar: " + err.message);
+    } finally {
+      setImportando(false);
+      e.target.value = "";
+    }
+  };
   const exportPDF = () => {
     const rowsHtml = liveItems.map((it, i) => { const d = r.rows[i]; return `<tr><td>${it.ingredient.name}</td><td class=n>${fmt2(d.g * scale)}</td><td class=n>${fmt2(d.fat * scale)}</td><td class=n>${fmt2(d.pod * scale)}</td><td class=n>${fmt2(d.msnf * scale)}</td><td class=n>${fmt2(d.st * scale)}</td><td class=n>${fmt2(d.pac * scale)}</td></tr>`; }).join("");
     const monHtml = r.monitor.filter((m) => m.status !== "na").map((m) => `<tr><td>${m.label}</td><td class=n>${m.min}${m.unit}</td><td class=n>${m.max}${m.unit}</td><td class=n><b>${m.val}${m.unit}</b></td><td class=n>${m.status === "in" ? "OK" : m.status === "below" ? "baixo" : "alto"}</td></tr>`).join("");
@@ -1076,7 +1145,20 @@ export default function GelatoLab({ session }) {
         </span>
       </div>
 
-      {tab === "library" && <Library saved={saved} onOpen={openRecipe} onDelete={(s) => deleteRecipe(s)} famLabel={famLabel} />}
+      {tab === "library" && <>
+        <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "14px 16px", marginBottom: 16, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>Importar receitas</div>
+            <div style={{ fontSize: 12, color: T.soft, marginTop: 2 }}>Suba um arquivo .csv no formato do modelo para adicionar várias receitas de uma vez.</div>
+          </div>
+          <label style={{ background: T.gold, color: "#fff", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: importando ? "default" : "pointer", opacity: importando ? 0.6 : 1 }}>
+            {importando ? "Importando…" : "Escolher arquivo .csv"}
+            <input type="file" accept=".csv,text/csv" onChange={onImportCSV} disabled={importando} style={{ display: "none" }} />
+          </label>
+        </div>
+        {importMsg && <div style={{ background: importMsg.startsWith("✓") ? "#eef5ef" : "#f3ecda", border: `1px solid ${T.line}`, borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 12.5, color: T.ink, lineHeight: 1.5 }}>{importMsg}</div>}
+        <Library saved={saved} onOpen={openRecipe} onDelete={(s) => deleteRecipe(s)} famLabel={famLabel} />
+      </>}
       {tab === "ingredients" && <IngredientsTab db={db} setDb={setDb} />}
       {tab === "families" && <FamiliesTab fams={allFamilies} version={famVersion} onCreate={createFamily} onDuplicate={duplicateFamily} onDelete={deleteFamily} onSetParam={setFamParam} onRename={renameFamily} onUse={(id) => { setFamily(id); setTab("formula"); }} />}
 
