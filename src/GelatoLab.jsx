@@ -1,6 +1,100 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase, listarReceitas, salvarReceita, apagarReceita, linhaParaApp } from "./supabase";
 
+const MODELO_CSV = `receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite integral,560
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Creme 35%,120
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite em pó desnatado,55
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Sacarose,130
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Dextrose,30
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Estabilizante/neutro,5
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Gema de ovo,100
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Água,330
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Sacarose,180
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Dextrose,40
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Estabilizante/neutro,5
+Sorbet de morango,Sorbet de fruta,Sorbetto,-11,tradicional,Maria,Morango,445
+`;
+const PROMPT_CONVERSAO = `PROMPT PARA CONVERTER SUAS RECEITAS (cole no ChatGPT, Claude, Gemini, etc.)
+=================================================================================
+
+Como usar:
+1. Copie TODO o texto abaixo (da linha "INÍCIO DO PROMPT" até o fim).
+2. Cole numa IA (ChatGPT, Claude, Gemini…).
+3. Logo abaixo, cole as suas receitas — do jeito que você tiver (texto, tabela,
+   copiado do Excel, etc.).
+4. A IA vai devolver uma tabela CSV no formato certo.
+5. Salve essa tabela como arquivo .csv e suba no GelatoLab em "Importar receitas".
+
+---------------------------------------------------------------------------------
+INÍCIO DO PROMPT
+---------------------------------------------------------------------------------
+
+Você vai converter receitas de gelato/sorvete para um formato CSV exato, para
+importação num aplicativo. Siga estas regras à risca:
+
+1) Devolva APENAS o CSV, sem comentários, sem explicação, sem \`\`\`.
+
+2) A primeira linha deve ser EXATAMENTE este cabeçalho:
+receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas
+
+3) Cada INGREDIENTE de cada receita vira UMA linha. Uma receita com 7 ingredientes
+   gera 7 linhas, repetindo nas 6 primeiras colunas o nome da receita, família,
+   tipo, temperatura, equipamento e chef.
+
+4) Coluna "familia": use EXATAMENTE um destes valores (o mais próximo da receita):
+   Creme branco, Creme de iogurte, Creme de gema, Creme de fruta,
+   Creme de chocolate, Creme de frutos secos, Creme de chá/especiarias,
+   Creme de licor, Creme salgado, Sorbet de fruta, Sorbet cítrico,
+   Sorbet de chá/especiarias, Sorbet de licor, Sorbet salgado.
+   (Sorvete com leite/creme = "Creme ..."; sorvete de fruta sem leite = "Sorbet ...".)
+
+5) Coluna "tipo": use um destes: Gelato, Sorbetto, Ghiacciolo, Granita.
+   (Com leite = Gelato; fruta sem leite = Sorbetto; picolé de água = Ghiacciolo;
+   raspado = Granita.)
+
+6) Coluna "temperatura": número da temperatura de serviço em °C, negativo,
+   sem o símbolo. Se a receita não disser, use -11. Exemplos: -11, -14, -18.
+
+7) Coluna "equipamento": use um destes: tradicional, pacojet, ninja, caseiro.
+   Se não souber, use tradicional.
+
+8) Coluna "chef": o nome do autor da receita, se houver; senão deixe vazio.
+
+9) Coluna "ingrediente": o nome do ingrediente. Padronize nomes comuns assim:
+   - açúcar / açúcar comum  -> Sacarose
+   - açúcar invertido / trimoline -> Açúcar invertido
+   - glicose / dextrose -> Dextrose
+   - leite -> Leite integral
+   - creme de leite / nata -> Creme 35%
+   - leite em pó -> Leite em pó desnatado
+   - neutro / estabilizante / liga neutra -> Estabilizante/neutro
+   - gema -> Gema de ovo
+   - água -> Água
+   Para frutas, use o nome da fruta (ex.: Morango, Limão, Manga).
+   Mantenha outros ingredientes com nome claro e simples.
+
+10) Coluna "gramas": só o número, em gramas. Se a receita estiver em porcentagem,
+    converta para gramas considerando o total de 1000 g.
+
+EXEMPLO de saída correta:
+receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,,Leite integral,560
+Creme de baunilha,Creme branco,Gelato,-11,tradicional,,Sacarose,130
+
+Agora converta as receitas que eu colar a seguir:
+
+---------------------------------------------------------------------------------
+FIM DO PROMPT
+---------------------------------------------------------------------------------
+
+⚠️ IMPORTANTE — CONFIRA ANTES DE IMPORTAR:
+A IA é ótima para organizar, mas pode errar um número ou um nome. Antes de subir,
+dê uma olhada rápida na tabela: os pesos batem? Os ingredientes certos? Numa receita
+de gelato, um número errado estraga o resultado. A conferência leva 1 minuto e vale a pena.
+`;
+
+
 // ============================================================================
 // MOTOR — formato Corvitto (pontos ABSOLUTOS por receita, como no livro)
 // dolcezza = Σ g·POD/100 · PAC = Σ g·PAC/100 · temp sai do PAC normalizado p/ 1kg
@@ -1037,6 +1131,13 @@ export default function GelatoLab({ session }) {
   // ---- Importação de receitas via CSV ----
   const [importando, setImportando] = useState(false);
   const [importMsg, setImportMsg] = useState("");
+  const baixarTexto = (nome, conteudo, tipo) => {
+    const blob = new Blob([conteudo], { type: tipo + ";charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = nome;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
   const normaliza = (s) => (s || "").toString().trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const famIdPorNome = (nome) => {
     const n = normaliza(nome);
@@ -1149,7 +1250,14 @@ export default function GelatoLab({ session }) {
         <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, padding: "14px 16px", marginBottom: 16, display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>Importar receitas</div>
-            <div style={{ fontSize: 12, color: T.soft, marginTop: 2 }}>Suba um arquivo .csv no formato do modelo para adicionar várias receitas de uma vez.</div>
+            <div style={{ fontSize: 12, color: T.soft, marginTop: 2 }}>Tem muitas receitas? Importe todas de uma vez, sem digitar uma por uma.</div>
+            <div style={{ fontSize: 11.5, color: T.soft, marginTop: 6, lineHeight: 1.5 }}>
+              <b style={{ color: T.ink }}>Como fazer:</b> 1) Baixe o modelo e preencha; ou 2) baixe o prompt, cole numa IA (ChatGPT etc.) junto com suas receitas, e ela monta a planilha. Depois suba o arquivo .csv aqui.
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+              <button onClick={() => baixarTexto("modelo-receitas.csv", MODELO_CSV, "text/csv")} style={{ background: "#fff", color: T.ink, border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>↓ Baixar modelo (.csv)</button>
+              <button onClick={() => baixarTexto("prompt-gelatolab.txt", PROMPT_CONVERSAO, "text/plain")} style={{ background: "#fff", color: T.ink, border: `1px solid ${T.line}`, borderRadius: 8, padding: "6px 12px", fontSize: 12, cursor: "pointer" }}>↓ Baixar prompt p/ IA</button>
+            </div>
           </div>
           <label style={{ background: T.gold, color: "#fff", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: importando ? "default" : "pointer", opacity: importando ? 0.6 : 1 }}>
             {importando ? "Importando…" : "Escolher arquivo .csv"}
