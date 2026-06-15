@@ -625,11 +625,15 @@ function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetPara
               const P = FAMILY_PARAMS[f.id] || {}; const isOpen = open === f.id;
               return (
                 <div key={f.id} style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", cursor: "pointer" }} onClick={() => setOpen(isOpen ? null : f.id)}>
-                    <span style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 15.5, fontWeight: 600, color: T.ink }}>{f.label}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px" }}>
+                    {f.locked ? (
+                      <span onClick={() => setOpen(isOpen ? null : f.id)} style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 15.5, fontWeight: 600, color: T.ink, cursor: "pointer", flex: 1 }}>{f.label}</span>
+                    ) : (
+                      <input value={f.label} onChange={(e) => onRename(f.id, e.target.value)} title="clique para renomear" style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 15.5, fontWeight: 600, color: T.ink, border: "none", borderBottom: `1px dashed ${T.goldLine}`, background: "none", padding: "2px 0", flex: 1, minWidth: 120 }} />
+                    )}
                     {f.locked ? <span style={{ fontSize: 9.5, background: T.bg, color: T.soft, padding: "2px 8px", borderRadius: 20, fontWeight: 600, border: `1px solid ${T.line}` }}>🔒 referência</span>
-                             : <span style={{ fontSize: 9.5, background: "#e9f3ee", color: "#1a7d54", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>editável</span>}
-                    <span style={{ marginLeft: "auto", fontSize: 18, color: T.soft }}>{isOpen ? "▾" : "▸"}</span>
+                             : <span style={{ fontSize: 9.5, background: "#e9f3ee", color: "#1a7d54", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>editável ✎</span>}
+                    <span onClick={() => setOpen(isOpen ? null : f.id)} style={{ fontSize: 18, color: T.soft, cursor: "pointer" }}>{isOpen ? "▾" : "▸"}</span>
                   </div>
                   {isOpen && (
                     <div style={{ padding: "4px 16px 16px", borderTop: `1px solid ${T.bg}` }}>
