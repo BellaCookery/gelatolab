@@ -765,6 +765,18 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
   const pacSwap = (suggestions || []).find((s) => s.swap)?.swap;
   const tips = dicas ? buildTips(monitor, pacNow, pacTarget, servingTemp) : [];
   const pacDiff = Math.round(pacNow - pacTarget);
+  // dica de correção por parâmetro (aparece só quando está fora da faixa)
+  const FIX = {
+    sugars: { below: "adicione açúcar (sacarose, dextrose).", above: "reduza os açúcares." },
+    fat: { below: "adicione creme de leite ou gema.", above: "reduza creme/gema, ou aumente o leite." },
+    msnf: { below: "adicione leite em pó desnatado.", above: "reduza o leite em pó." },
+    solids: { below: "adicione sólidos (leite em pó, açúcar).", above: "reduza leite em pó/açúcar, ou mais leite. Risco de arenoso." },
+    pod: { below: "pouco doce — mais sacarose ou invertido.", above: "doce demais — troque parte por dextrose." },
+    pac: { below: "mais dextrose/invertido (ou menos sacarose).", above: "mais sacarose (ou menos dextrose/invertido)." },
+    other: { below: "aumente os outros sólidos.", above: "reduza os outros sólidos." },
+    fruit: { below: "adicione mais fruta ou suco.", above: "reduza a fruta." },
+    alcohol: { below: "adicione um pouco mais de álcool.", above: "reduza o álcool (sobe muito o PAC)." },
+  };
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(60,58,54,.04)" }}>
       <div style={{ padding: "13px 18px", borderBottom: `1px solid ${T.line}`, display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: 8 }}>
@@ -828,8 +840,11 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
             else if (m.val > m.max) diff = round(m.val - m.max, 1);
             const diffTxt = diff === 0 ? "—" : (diff > 0 ? `+${diff}` : `${diff}`) + m.unit;
             const isPac = m.key === "pac";
+            const dir = m.val < m.min ? "below" : m.val > m.max ? "above" : null;
+            const fixTxt = dicas && dir && FIX[m.key] ? FIX[m.key][dir] : null;
             return (
-              <tr key={m.key} style={{ borderBottom: `1px solid ${T.bg}`, background: m.status === "in" ? "transparent" : c.bg, borderLeft: `4px solid ${m.status === "in" ? "transparent" : c.fill}` }}>
+              <React.Fragment key={m.key}>
+              <tr style={{ borderBottom: fixTxt ? "none" : `1px solid ${T.bg}`, background: m.status === "in" ? "transparent" : c.bg, borderLeft: `4px solid ${m.status === "in" ? "transparent" : c.fill}` }}>
                 <td style={{ padding: "8px 8px", fontSize: 12.5, color: T.ink, fontWeight: m.status === "in" ? 400 : 600 }}>{m.label}<span style={{ color: T.soft, fontSize: 11, marginLeft: 6 }}>{m.note}</span></td>
                 <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: T.soft, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.min}–{m.max}{m.unit}</td>
                 <td style={{ padding: "8px 8px", fontSize: 13.5, textAlign: "right", color: c.fill, fontWeight: 700, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.val}{m.unit}</td>
@@ -838,6 +853,16 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
                   <span style={{ fontSize: 10.5, background: c.fill, color: "#fff", padding: "3px 11px", borderRadius: 6, fontWeight: 700, letterSpacing: 0.5 }}>{c.label}</span>
                 </td>
               </tr>
+              {fixTxt && (
+                <tr style={{ borderBottom: `1px solid ${T.bg}`, background: c.bg, borderLeft: `4px solid ${c.fill}` }}>
+                  <td colSpan={5} style={{ padding: "0 8px 9px 8px" }}>
+                    <div style={{ background: T.sunBg, border: `1px solid ${T.goldBg}`, borderRadius: 8, padding: "7px 11px", fontSize: 11.5, color: "#8a6d1e", lineHeight: 1.5 }}>
+                      <span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 700 }}>{dir === "below" ? "↑" : "↓"}</span> <b style={{ fontWeight: 700 }}>{dir === "below" ? "baixo — para subir:" : "alto — para baixar:"}</b> {fixTxt}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </React.Fragment>
             );
           })}
         </tbody>
