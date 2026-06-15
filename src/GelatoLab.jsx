@@ -1395,11 +1395,11 @@ export default function GelatoLab({ session }) {
             <span style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, color: T.ink }}>Ficha técnica · {targetWeight >= 1000 ? `${targetWeight / 1000}kg` : `${targetWeight}g`}</span>
             <button onClick={() => setModal(true)} style={{ background: T.goldBg, color: T.gold, border: `1px solid ${T.goldLine}`, borderRadius: 8, padding: "6px 12px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>+ ingrediente</button>
           </div>
-          {pacSwap && recGrams && (
+          {pacSwap && recGrams && false && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "10px 18px", background: "#ffeaea", borderBottom: `1px solid ${T.line}`, flexWrap: "wrap" }}>
               <span style={{ fontSize: 13, color: "#c01f2f", fontWeight: 600, maxWidth: 760 }}>
-                <b style={{ fontFamily: "'DM Mono', monospace" }}>⇒</b> para servir a {servingTemp}°C{recGrams._additions && recGrams._additions.length ? <> · adicionar {recGrams._additions.map((a) => `${a.grams}g de ${swapLabel(a.name)}`).join(" + ")}</> : null}
-                <span style={{ display: "block", fontWeight: 500, color: "#9a3b46", fontSize: 11.5, marginTop: 2 }}>Blend dextrose + invertido (meio a meio): sobe o PAC mantendo a doçura praticamente igual — método Corvitto.</span>
+                <b style={{ fontFamily: "'DM Mono', monospace" }}>⇒</b> para servir a {servingTemp}°C, veja a recomendação completa nos <b>Parâmetros de controle</b> abaixo.
+                <span style={{ display: "block", fontWeight: 500, color: "#9a3b46", fontSize: 11.5, marginTop: 2 }}>O ajuste sobe o PAC mantendo a doçura praticamente igual — método Corvitto.</span>
               </span>
               <button onClick={() => applySwap(pacSwap)} style={{ background: "#c01f2f", color: "#fff", border: "none", borderRadius: 8, padding: "7px 15px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Aplicar ajuste</button>
             </div>
