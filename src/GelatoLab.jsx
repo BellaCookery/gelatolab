@@ -1060,7 +1060,7 @@ export default function GelatoLab({ session }) {
       {modal && <AddModal db={db} onPick={pickItem} onClose={() => setModal(false)} />}
 
       <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 4 }}>
-        <div style={{ width: 32, height: 32, borderRadius: "50% 50% 50% 5px", background: `linear-gradient(135deg, ${T.goldSoft}, ${T.gold})`, boxShadow: "0 2px 12px rgba(176,141,63,.35)" }} />
+        <img src="/icon-192.png" alt="GelatoLab" style={{ width: 38, height: 38, borderRadius: 9, boxShadow: "0 2px 12px rgba(176,141,63,.35)", display: "block" }} />
         <div>
           <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 700, color: T.ink, letterSpacing: 0.3, lineHeight: 1 }}>Gelato<span style={{ color: T.gold }}>Lab</span></div>
           <div style={{ fontSize: 9.5, letterSpacing: 2.5, textTransform: "uppercase", color: T.goldSoft, fontWeight: 600, marginTop: 2 }}>Balanceamento de autor</div>
