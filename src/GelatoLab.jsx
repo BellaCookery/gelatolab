@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { supabase, listarReceitas, salvarReceita, apagarReceita, linhaParaApp, lerPreferencias, salvarPreferencia } from "./supabase";
+import { supabase, listarReceitas, salvarReceita, apagarReceita, linhaParaApp, lerPreferencias, salvarPreferencia, listarEscolas, criarEscola, salvarEscola, apagarEscola } from "./supabase";
 
 const MODELO_CSV = `receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas,preparo,observacoes
 Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite integral,560,"Misturar os pós (açúcares, leite em pó, neutro). Aquecer o leite e o creme a 40°C, juntar os pós, pasteurizar a 85°C. Maturar 6-12h na geladeira. Mantecar.","Base clássica. Pode adicionar fava de baunilha na pasteurização."
@@ -272,10 +272,10 @@ function compute(items, target, opts = {}) {
   const pacTarget = target.pacOverride ?? pacTargetFor(target.servingTemp, target.family);
   const pacRange = { min: pacTarget - PAC_TOLERANCE, max: pacTarget + PAC_TOLERANCE };
   const ranges = FAMILY_RANGES[target.family];
-  // Se houver um perfil de escola ativo, ele SOBREPÕE as faixas da família.
-  const perfilEsc = target.perfilEscola && ESCOLAS[target.escola]?.perfis?.[target.perfilEscola];
+  // Se houver um perfil de escola resolvido (do banco), ele SOBREPÕE as faixas da família.
+  const perfilEsc = target.perfilResolvido || null;
   const P = perfilEsc || FAMILY_PARAMS[target.family] || FAMILY_PARAMS.cream;
-  const mostraPct = target.escola && ESCOLAS[target.escola]?.unidadePadrao === "pct";
+  const mostraPct = perfilEsc && perfilEsc._pct;
   // === PAINEL DE MONITORAMENTO (parâmetros por família) ===
   const pct = (k) => (sum(k) / safeM) * 100;
   // helper: cria uma linha; se a faixa for null, marca como "não se aplica"
@@ -1073,14 +1073,92 @@ function IngredientsTab({ db, setDb }) {
   );
 }
 
+function EscolasTab({ escolas, params, onNova, onSalvar, onRemover, onUsar }) {
+  const [abertaId, setAbertaId] = useState(null);
+  const aberta = escolas.find((e) => e.id === abertaId);
+  const fams = (aberta?.dados?.familias) || [];
+  const setFamilias = (novas) => onSalvar({ ...aberta, dados: { ...aberta.dados, familias: novas } });
+  const addFamilia = () => setFamilias([...fams, { nome: "Nova família", subtipos: [], faixas: {} }]);
+  const setFam = (i, patch) => setFamilias(fams.map((f, k) => k === i ? { ...f, ...patch } : f));
+  const delFam = (i) => setFamilias(fams.filter((_, k) => k !== i));
+  const setFaixa = (i, key, idx, val) => {
+    const f = fams[i]; const fx = { ...(f.faixas || {}) };
+    const par = [...(fx[key] || ["", ""])]; par[idx] = val === "" ? "" : Number(val); fx[key] = par;
+    setFam(i, { faixas: fx });
+  };
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+        <div>
+          <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 700, color: T.ink }}>Escolas / métodos</div>
+          <div style={{ fontSize: 12.5, color: T.soft, marginTop: 2, maxWidth: 560, lineHeight: 1.5 }}>Crie suas escolas, dê o nome que quiser e preencha as faixas (zonas) de cada família. Depois é só escolher a escola na formulação.</div>
+        </div>
+        <button onClick={onNova} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 9, padding: "9px 16px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Nova escola</button>
+      </div>
+
+      {escolas.length === 0 && (
+        <div style={{ border: `1px dashed ${T.line}`, borderRadius: 14, padding: 30, textAlign: "center", color: T.soft }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.ink, marginBottom: 4 }}>Nenhuma escola ainda</div>
+          <div style={{ fontSize: 12.5 }}>Clique em "+ Nova escola" para começar. Você nomeia (ex: Corvitto, Di Paolo) e preenche as faixas.</div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {escolas.map((e) => (
+          <div key={e.id} style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 14, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", flexWrap: "wrap" }}>
+              <input value={e.nome} onChange={(ev) => onSalvar({ ...e, nome: ev.target.value })} style={{ fontSize: 15, fontWeight: 700, color: T.ink, border: "none", borderBottom: `1px dashed ${T.line}`, padding: "2px 0", background: "none", flex: 1, minWidth: 140 }} />
+              <span style={{ fontSize: 11.5, color: T.soft }}>{(e.dados?.familias || []).length} família(s)</span>
+              <button onClick={() => setAbertaId(abertaId === e.id ? null : e.id)} style={{ background: T.goldBg, color: T.ink, border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 12.5, cursor: "pointer", fontWeight: 600 }}>{abertaId === e.id ? "Fechar" : "Editar famílias"}</button>
+              <button onClick={() => onRemover(e.id)} style={{ background: "none", color: "#c01f2f", border: "none", fontSize: 12.5, cursor: "pointer" }}>apagar</button>
+            </div>
+
+            {abertaId === e.id && (
+              <div style={{ borderTop: `1px solid ${T.line}`, padding: 14, background: T.bg }}>
+                {fams.map((f, i) => (
+                  <div key={i} style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                      <input value={f.nome} onChange={(ev) => setFam(i, { nome: ev.target.value })} placeholder="Nome da família" style={{ fontSize: 13.5, fontWeight: 600, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 7, padding: "5px 9px", flex: 1, minWidth: 140 }} />
+                      <button onClick={() => delFam(i)} style={{ background: "none", color: "#c01f2f", border: "none", fontSize: 12, cursor: "pointer" }}>remover família</button>
+                    </div>
+                    <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 7 }}>Faixas (mín – máx)</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 7, marginBottom: 10 }}>
+                      {params.map((p) => (
+                        <div key={p.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 11, color: T.soft, flex: 1 }}>{p.label}</span>
+                          <input value={f.faixas?.[p.key]?.[0] ?? ""} onChange={(ev) => setFaixa(i, p.key, 0, ev.target.value)} placeholder="mín" style={{ width: 46, fontSize: 12, textAlign: "center", border: `1px solid ${T.line}`, borderRadius: 6, padding: "4px" }} />
+                          <span style={{ color: T.soft }}>–</span>
+                          <input value={f.faixas?.[p.key]?.[1] ?? ""} onChange={(ev) => setFaixa(i, p.key, 1, ev.target.value)} placeholder="máx" style={{ width: 46, fontSize: 12, textAlign: "center", border: `1px solid ${T.line}`, borderRadius: 6, padding: "4px" }} />
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 6 }}>Subtipos (só organizam)</div>
+                    <input value={(f.subtipos || []).join(", ")} onChange={(ev) => setFam(i, { subtipos: ev.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} placeholder="Ex: Fior di latte, Chocolate, Pistache (separe por vírgula)" style={{ width: "100%", boxSizing: "border-box", fontSize: 12.5, border: `1px solid ${T.line}`, borderRadius: 7, padding: "6px 9px" }} />
+                    <div style={{ marginTop: 10, textAlign: "right" }}>
+                      <button onClick={() => onUsar(e.id, f.nome)} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Usar na formulação →</button>
+                    </div>
+                  </div>
+                ))}
+                <button onClick={addFamilia} style={{ background: "#fff", color: T.ink, border: `1px dashed ${T.gold}`, borderRadius: 9, padding: "9px 14px", fontSize: 12.5, cursor: "pointer", width: "100%" }}>+ Adicionar família</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function GelatoLab({ session }) {
   const userId = session?.user?.id;
   const [tab, setTab] = useState("formula");
   const [db, setDb] = useState(INGREDIENTS);
   const [servingTemp, setServingTemp] = useState(-11);
   const [family, setFamily] = useState("cream");
-  const [escola, setEscola] = useState(""); // "" = padrão (faixas por família/Corvitto)
+  const [escola, setEscola] = useState(""); // id da escola escolhida ("" = nenhuma)
   const [perfilEscola, setPerfilEscola] = useState("");
+  const [escolas, setEscolas] = useState([]); // escolas do usuário (do banco)
+  const [subtipo, setSubtipo] = useState("");
   const [kind, setKind] = useState("Gelato");
   const [targetWeight, setTargetWeight] = useState(1000);
   const [recipeName, setRecipeName] = useState("Nova receita");
@@ -1134,15 +1212,58 @@ export default function GelatoLab({ session }) {
     lerPreferencias(userId)
       .then((p) => { if (vivo && p) setDicas(p.dicas !== false); })
       .catch((e) => console.error("erro ao ler preferências:", e));
+    listarEscolas(userId)
+      .then((es) => { if (vivo) setEscolas(es); })
+      .catch((e) => console.error("erro ao listar escolas:", e));
     return () => { vivo = false; };
   }, []);
   const mudarDicas = async (v) => {
     setDicas(v);
     try { await salvarPreferencia(userId, "dicas", v); } catch (e) { console.error(e); }
   };
+  // ---- Gerência de escolas ----
+  const PARAMS_ESCOLA = [
+    { key: "sugars", label: "Açúcares (%)" }, { key: "fat", label: "Gorduras (%)" },
+    { key: "msnf", label: "SLNG (%)" }, { key: "other", label: "Outros sólidos (%)" },
+    { key: "solids", label: "Sólidos totais (%)" }, { key: "sp", label: "SP / doçura (%)" },
+    { key: "afp", label: "AFP / anticongelante (%)" }, { key: "fruit", label: "Frutas (%)" },
+    { key: "alcohol", label: "Álcool (%)" }, { key: "chopped", label: "Picados (%)" },
+    { key: "overrun", label: "Overrun (%) — referência" },
+  ];
+  const novaEscola = async () => {
+    try {
+      const e = await criarEscola(userId, `Escola ${escolas.length + 1}`);
+      setEscolas((p) => [...p, e]);
+    } catch (err) { console.error(err); alert("Erro ao criar escola"); }
+  };
+  const persistirEscola = async (esc) => {
+    setEscolas((p) => p.map((x) => x.id === esc.id ? esc : x));
+    try { await salvarEscola(esc.id, esc.nome, esc.dados); } catch (e) { console.error(e); }
+  };
+  const removerEscola = async (id) => {
+    if (!confirm("Apagar esta escola e todas as suas famílias?")) return;
+    try { await apagarEscola(id); setEscolas((p) => p.filter((x) => x.id !== id)); if (escola === id) { setEscola(""); setPerfilEscola(""); } } catch (e) { console.error(e); }
+  };
 
   const liveItems = items.map((it) => ({ ingredient: ingFromDb(it.ingredient.id) || it.ingredient, grams: it.grams }));
-  const r = useMemo(() => compute(liveItems, { servingTemp, family, escola, perfilEscola }, { method }), [items, servingTemp, family, escola, perfilEscola, db, method]);
+  // resolve a escola/família escolhida (do banco) para faixas que o compute entende
+  const escolaAtiva = escolas.find((e) => e.id === escola);
+  const escolaSel = escolaAtiva;
+  const familiaAtiva = escolaAtiva?.dados?.familias?.find((f) => f.nome === perfilEscola);
+  const famSel = familiaAtiva;
+  const perfilResolvido = familiaAtiva ? (() => {
+    const fx = familiaAtiva.faixas || {};
+    const r = (k) => Array.isArray(fx[k]) && fx[k][0] !== "" && fx[k][1] !== "" ? [Number(fx[k][0]), Number(fx[k][1])] : null;
+    const r10 = (k) => { const v = r(k); return v ? [v[0] * 10, v[1] * 10] : null; };
+    return {
+      label: familiaAtiva.nome,
+      sugars: r("sugars"), fat: r("fat"), msnf: r("msnf"), other: r("other"),
+      neutro: [0, 0.6], solids: r("solids"), pod: r10("sp"), pac: r10("afp"),
+      fruit: r("fruit"), alcohol: r("alcohol"), chopped: r("chopped"),
+      overrun: r("overrun"), _pct: true,
+    };
+  })() : null;
+  const r = useMemo(() => compute(liveItems, { servingTemp, family, perfilResolvido, temEscola: !!escolaAtiva }, { method }), [items, servingTemp, family, perfilResolvido, escolaAtiva, db, method]);
   const scale = r.totalGrams > 0 ? targetWeight / r.totalGrams : 1;
   // recomendação de gramas dirigida pela TEMPERATURA: aplica o swap de PAC virtualmente
   // e devolve, por ingrediente, o novo peso sugerido (para mostrar na ficha como "→ X")
@@ -1393,7 +1514,7 @@ export default function GelatoLab({ session }) {
       </div>
       <div style={{ height: 2, background: `linear-gradient(90deg, ${T.gold}, ${T.goldLine} 40%, transparent)`, marginBottom: 14, borderRadius: 2 }} />
       <div style={{ display: "flex", gap: 2, borderBottom: `1px solid ${T.line}`, marginBottom: 20, alignItems: "center" }}>
-        {tabBtn("formula", "Formulação")}{tabBtn("ingredients", "Ingredientes")}{tabBtn("families", "Famílias")}{tabBtn("library", `Receitas (${saved.length})`)}
+        {tabBtn("formula", "Formulação")}{tabBtn("ingredients", "Ingredientes")}{tabBtn("escolas", "Escolas")}{tabBtn("families", "Famílias")}{tabBtn("library", `Receitas (${saved.length})`)}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
           {salvando && <span style={{ fontSize: 12, color: T.gold }}>salvando…</span>}
           <span onClick={() => setContaAberta(true)} style={{ fontSize: 12.5, color: T.soft, cursor: "pointer" }}>minha conta</span>
@@ -1422,6 +1543,7 @@ export default function GelatoLab({ session }) {
         <Library saved={saved} onOpen={openRecipe} onDelete={(s) => deleteRecipe(s)} famLabel={famLabel} />
       </>}
       {tab === "ingredients" && <IngredientsTab db={db} setDb={setDb} />}
+      {tab === "escolas" && <EscolasTab escolas={escolas} params={PARAMS_ESCOLA} onNova={novaEscola} onSalvar={persistirEscola} onRemover={removerEscola} onUsar={(id, fam) => { setEscola(id); setPerfilEscola(fam); setTab("formula"); }} />}
       {tab === "families" && <FamiliesTab fams={allFamilies} version={famVersion} onCreate={createFamily} onDuplicate={duplicateFamily} onDelete={deleteFamily} onSetParam={setFamParam} onRename={renameFamily} onUse={(id) => { setFamily(id); setTab("formula"); }} />}
 
       {tab === "formula" && (<>
@@ -1478,25 +1600,32 @@ export default function GelatoLab({ session }) {
               <select value={equipment} onChange={(e) => setEquipment(e.target.value)} style={sel}>{EQUIPMENT.map((eq) => <option key={eq.id} value={eq.id}>{eq.label}</option>)}</select>
             </div>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>3 · ESCOLA / MÉTODO</div>
-              <select value={escola} onChange={(e) => { const v = e.target.value; setEscola(v); const prim = v && ESCOLAS[v] ? Object.keys(ESCOLAS[v].perfis)[0] : ""; setPerfilEscola(prim); }} style={sel}>
-                <option value="">Padrão (por família)</option>
-                {Object.entries(ESCOLAS).map(([id, e]) => <option key={id} value={id}>{e.label}</option>)}
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>3 · ESCOLA</div>
+              <select value={escola} onChange={(e) => { const v = e.target.value; setEscola(v); const esc = escolas.find((x) => x.id === v); const prim = esc?.dados?.familias?.[0]?.nome || ""; setPerfilEscola(prim); setSubtipo(""); }} style={sel}>
+                <option value="">— escolha —</option>
+                {escolas.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
               </select>
             </div>
             <div>
-              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>4 · TIPO</div>
-              {escola && ESCOLAS[escola] ? (
-                <select value={perfilEscola} onChange={(e) => setPerfilEscola(e.target.value)} style={sel}>
-                  {Object.entries(ESCOLAS[escola].perfis).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+              <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>4 · FAMÍLIA</div>
+              {escola && escolaSel ? (
+                <select value={perfilEscola} onChange={(e) => { setPerfilEscola(e.target.value); setSubtipo(""); }} style={sel}>
+                  {(escolaSel.dados?.familias || []).map((f, i) => <option key={i} value={f.nome}>{f.nome}</option>)}
                 </select>
               ) : (
-                <select value={family} onChange={(e) => setFamily(e.target.value)} style={sel}>{allFamilies.map((f) => <option key={f.id} value={f.id}>{f.label}{f.locked ? "" : " ✎"}</option>)}</select>
+                <select disabled style={{ ...sel, opacity: 0.5 }}><option>escolha a escola</option></select>
               )}
             </div>
             <div>
               <div style={{ fontSize: 10, letterSpacing: 0.5, color: T.soft, marginBottom: 5, fontWeight: 700 }}>5 · SUBTIPO</div>
-              <select value={kind} onChange={(e) => setKind(e.target.value)} style={sel}>{KINDS.map((k) => <option key={k} value={k}>{k}</option>)}</select>
+              {famSel && (famSel.subtipos || []).length ? (
+                <select value={subtipo} onChange={(e) => setSubtipo(e.target.value)} style={sel}>
+                  <option value="">— opcional —</option>
+                  {famSel.subtipos.map((s, i) => <option key={i} value={s}>{s}</option>)}
+                </select>
+              ) : (
+                <select disabled style={{ ...sel, opacity: 0.5 }}><option>—</option></select>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${T.bg}`, flexWrap: "wrap" }}>
