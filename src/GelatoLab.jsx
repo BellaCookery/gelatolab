@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { supabase, listarReceitas, salvarReceita, apagarReceita, linhaParaApp } from "./supabase";
+import { supabase, listarReceitas, salvarReceita, apagarReceita, linhaParaApp, lerPreferencias, salvarPreferencia } from "./supabase";
 
 const MODELO_CSV = `receita,familia,tipo,temperatura,equipamento,chef,ingrediente,gramas,preparo,observacoes
 Creme de baunilha,Creme branco,Gelato,-11,tradicional,Maria,Leite integral,560,"Misturar os pós (açúcares, leite em pó, neutro). Aquecer o leite e o creme a 40°C, juntar os pós, pasteurizar a 85°C. Maturar 6-12h na geladeira. Mantecar.","Base clássica. Pode adicionar fava de baunilha na pasteurização."
@@ -754,9 +754,9 @@ function buildTips(monitor, pacNow, pacTarget, servingTemp) {
   return tips;
 }
 
-function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, onApplySwap }) {
+function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, onApplySwap, dicas = true }) {
   const pacSwap = (suggestions || []).find((s) => s.swap)?.swap;
-  const tips = buildTips(monitor, pacNow, pacTarget, servingTemp);
+  const tips = dicas ? buildTips(monitor, pacNow, pacTarget, servingTemp) : [];
   const pacDiff = Math.round(pacNow - pacTarget);
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(60,58,54,.04)" }}>
@@ -1023,6 +1023,8 @@ export default function GelatoLab({ session }) {
   const [items, setItems] = useState(() => [{ id: "milk-whole", grams: 567 }, { id: "cream-35", grams: 172 }, { id: "smp", grams: 42 }, { id: "dextrose", grams: 137 }, { id: "inverted", grams: 26 }, { id: "sucrose", grams: 50 }, { id: "stabilizer", grams: 6 }].map((x) => ({ ingredient: INGREDIENTS.find((i) => i.id === x.id), grams: x.grams })));
   const [saved, setSaved] = useState([]);
   const [carregandoReceitas, setCarregandoReceitas] = useState(true);
+  const [dicas, setDicas] = useState(true); // mostrar recomendações de balanceamento
+  const [contaAberta, setContaAberta] = useState(false);
   // carrega as receitas do usuário ao abrir
   useEffect(() => {
     let vivo = true;
@@ -1030,8 +1032,15 @@ export default function GelatoLab({ session }) {
       .then((linhas) => { if (vivo) setSaved(linhas.map(linhaParaApp)); })
       .catch((e) => console.error("erro ao carregar receitas:", e))
       .finally(() => { if (vivo) setCarregandoReceitas(false); });
+    lerPreferencias(userId)
+      .then((p) => { if (vivo && p) setDicas(p.dicas !== false); })
+      .catch((e) => console.error("erro ao ler preferências:", e));
     return () => { vivo = false; };
   }, []);
+  const mudarDicas = async (v) => {
+    setDicas(v);
+    try { await salvarPreferencia(userId, "dicas", v); } catch (e) { console.error(e); }
+  };
 
   const liveItems = items.map((it) => ({ ingredient: ingFromDb(it.ingredient.id) || it.ingredient, grams: it.grams }));
   const r = useMemo(() => compute(liveItems, { servingTemp, family }, { method }), [items, servingTemp, family, db, method]);
@@ -1249,6 +1258,31 @@ export default function GelatoLab({ session }) {
     <div style={{ position: "relative", background: T.bg, color: T.ink, fontFamily: "'Inter', system-ui, sans-serif", minHeight: "100%", padding: 24, borderRadius: 18 }}>
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" />
       {modal && <AddModal db={db} onPick={pickItem} onClose={() => setModal(false)} />}
+      {contaAberta && (
+        <div onClick={() => setContaAberta(false)} style={{ position: "fixed", inset: 0, background: "rgba(40,38,34,.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: 26, width: "100%", maxWidth: 400, boxShadow: "0 8px 40px rgba(60,58,54,.2)" }}>
+            <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 22, fontWeight: 700, color: T.ink, marginBottom: 4 }}>Minha conta</div>
+            <div style={{ fontSize: 13, color: T.soft, marginBottom: 20 }}>{session?.user?.email}</div>
+
+            <div style={{ borderTop: `1px solid ${T.line}`, paddingTop: 18, marginBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: T.ink }}>Dicas de balanceamento</div>
+                  <div style={{ fontSize: 12, color: T.soft, marginTop: 3, lineHeight: 1.5 }}>Quando ligado, o app sugere ajustes para acertar o ponto da receita (método Corvitto). Desligue se preferir formular sem sugestões.</div>
+                </div>
+                <button onClick={() => mudarDicas(!dicas)} style={{ flexShrink: 0, width: 50, height: 28, borderRadius: 14, border: "none", cursor: "pointer", background: dicas ? T.gold : "#cfc8b8", position: "relative", transition: "background .2s" }}>
+                  <span style={{ position: "absolute", top: 3, left: dicas ? 25 : 3, width: 22, height: 22, borderRadius: "50%", background: "#fff", transition: "left .2s" }} />
+                </button>
+              </div>
+            </div>
+
+            <div style={{ borderTop: `1px solid ${T.line}`, marginTop: 20, paddingTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span onClick={sair} style={{ fontSize: 13.5, color: "#c01f2f", fontWeight: 600, cursor: "pointer" }}>Sair da conta</span>
+              <button onClick={() => setContaAberta(false)} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 9, padding: "9px 18px", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 4 }}>
         <img src="/icon-192.png" alt="GelatoLab" style={{ width: 38, height: 38, borderRadius: 9, boxShadow: "0 2px 12px rgba(176,141,63,.35)", display: "block" }} />
@@ -1263,7 +1297,7 @@ export default function GelatoLab({ session }) {
         {tabBtn("formula", "Formulação")}{tabBtn("ingredients", "Ingredientes")}{tabBtn("families", "Famílias")}{tabBtn("library", `Receitas (${saved.length})`)}
         <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
           {salvando && <span style={{ fontSize: 12, color: T.gold }}>salvando…</span>}
-          <span onClick={sair} style={{ fontSize: 12.5, color: T.soft, cursor: "pointer" }}>sair</span>
+          <span onClick={() => setContaAberta(true)} style={{ fontSize: 12.5, color: T.soft, cursor: "pointer" }}>minha conta</span>
         </span>
       </div>
 
@@ -1422,7 +1456,7 @@ export default function GelatoLab({ session }) {
           </div>
         </div>
 
-        <MonitorPanel monitor={r.monitor} servingTemp={servingTemp} pacTarget={r.pacTarget} pacNow={r.pacPerKg} suggestions={r.suggestions} onApplySwap={applySwap} />
+        <MonitorPanel monitor={r.monitor} servingTemp={servingTemp} pacTarget={r.pacTarget} pacNow={r.pacPerKg} suggestions={dicas ? r.suggestions : []} onApplySwap={applySwap} dicas={dicas} />
 
         <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, overflow: "hidden", marginTop: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.line}`, fontFamily: "'Fraunces', Georgia, serif", fontSize: 15, fontWeight: 600, color: T.ink }}>Observações</div>

@@ -79,3 +79,17 @@ export function linhaParaApp(linha) {
     prep: linha.preparo,
   };
 }
+
+// ---- Preferências do usuário ----
+export async function lerPreferencias(donoId) {
+  const { data, error } = await supabase
+    .from("preferencias").select("*").eq("dono", donoId).maybeSingle();
+  if (error) throw error;
+  return data || { dicas: true };
+}
+
+export async function salvarPreferencia(donoId, campo, valor) {
+  const linha = { dono: donoId, [campo]: valor, atualizado_em: new Date().toISOString() };
+  const { error } = await supabase.from("preferencias").upsert(linha);
+  if (error) throw error;
+}
