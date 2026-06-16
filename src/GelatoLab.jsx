@@ -602,8 +602,8 @@ function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetPara
   const linhasExistentes = [...new Set(fams.map((f) => f.author || "Autoral").filter((a) => a !== "Autoral"))];
   const authors = [...new Set(fams.map((f) => f.author || "Autoral"))];
   const fmtRange = (r) => r == null ? "—" : `${r[0]}–${r[1]}`;
-  const abrirCriar = () => { setDupSrc(null); setNewName(""); setBaseId("cream"); setTipo("creme"); setLinha(""); setNovaLinha(""); setCreating(true); };
-  const abrirDuplicar = (f) => { setDupSrc(f.id); setNewName(`${f.label} (cópia)`); setBaseId(f.id); setTipo(f.tipo || "creme"); setLinha(f.author && f.author !== "Autoral" ? f.author : ""); setNovaLinha(""); setCreating(true); };
+  const abrirCriar = () => { setDupSrc(null); setNewName(""); setBaseId("cream"); setTipo("creme"); setLinha(""); setNovaLinha(""); setCreating(true); setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 50); };
+  const abrirDuplicar = (f) => { setDupSrc(f.id); setNewName(`${f.label} (cópia)`); setBaseId(f.id); setTipo(f.tipo || "creme"); setLinha(f.author && f.author !== "Autoral" ? f.author : ""); setNovaLinha(""); setCreating(true); setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 50); };
   const confirmar = () => {
     if (!newName.trim()) return;
     const linhaFinal = linha === "__nova__" ? novaLinha.trim() : linha;
@@ -623,8 +623,8 @@ function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetPara
       </div>
 
       {creating && (
-        <div style={{ background: "#fff", border: `1px solid ${T.goldLine}`, borderRadius: 14, padding: 16, margin: "12px 0" }}>
-          <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 12 }}>{dupSrc ? "Duplicar família" : "Nova família"}</div>
+        <div style={{ background: T.sunBg, border: `2px solid ${T.gold}`, borderRadius: 14, padding: 16, margin: "12px 0", boxShadow: "0 4px 20px rgba(176,141,63,.18)" }}>
+          <div style={{ fontSize: 12, letterSpacing: 0.5, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 12 }}>{dupSrc ? "↓ Duplicar família — ajuste e confirme" : "Nova família"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <label><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Nome</span>
               <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ex: Pistache Siciliano" style={inp} /></label>
