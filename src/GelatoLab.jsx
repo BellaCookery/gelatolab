@@ -582,6 +582,7 @@ const MONCOLOR = {
   info: { fill: "#a59a86", bg: "#f6f1e8", label: "info" },
 };
 const KINDS = ["Gelato", "Sorbetto", "Ghiacciolo", "Granita"];
+const TIPOS_FAMILIA = ["creme", "creme de gema", "creme de fruta", "creme de chocolate", "creme de frutos secos", "iogurte", "sorbet", "sorbet cítrico", "granita", "salgado", "licor"];
 const fmt2 = (n) => (n === 0 || n == null ? "—" : round(n).toLocaleString("pt-BR"));
 
 function Pill({ active, onClick, children }) {
@@ -592,10 +593,25 @@ function Pill({ active, onClick, children }) {
 function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetParam, onRename, onUse }) {
   const [open, setOpen] = useState(null); // família expandida
   const [creating, setCreating] = useState(false);
+  const [dupSrc, setDupSrc] = useState(null); // id da família sendo duplicada
   const [newName, setNewName] = useState("");
   const [baseId, setBaseId] = useState("cream");
+  const [tipo, setTipo] = useState("creme");
+  const [linha, setLinha] = useState("");
+  const [novaLinha, setNovaLinha] = useState("");
+  const linhasExistentes = [...new Set(fams.map((f) => f.author || "Autoral").filter((a) => a !== "Autoral"))];
   const authors = [...new Set(fams.map((f) => f.author || "Autoral"))];
   const fmtRange = (r) => r == null ? "—" : `${r[0]}–${r[1]}`;
+  const abrirCriar = () => { setDupSrc(null); setNewName(""); setBaseId("cream"); setTipo("creme"); setLinha(""); setNovaLinha(""); setCreating(true); };
+  const abrirDuplicar = (f) => { setDupSrc(f.id); setNewName(`${f.label} (cópia)`); setBaseId(f.id); setTipo(f.tipo || "creme"); setLinha(f.author && f.author !== "Autoral" ? f.author : ""); setNovaLinha(""); setCreating(true); };
+  const confirmar = () => {
+    if (!newName.trim()) return;
+    const linhaFinal = linha === "__nova__" ? novaLinha.trim() : linha;
+    let id;
+    if (dupSrc) id = onDuplicate(dupSrc, newName.trim(), tipo, linhaFinal);
+    else id = onCreate(newName.trim(), baseId, tipo, linhaFinal);
+    setCreating(false); setDupSrc(null); setOpen(id);
+  };
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 6, flexWrap: "wrap", gap: 10 }}>
@@ -603,17 +619,36 @@ function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetPara
           <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 24, fontWeight: 600, color: T.ink }}>Famílias e seus padrões</div>
           <div style={{ fontSize: 13, color: T.soft, marginTop: 2, maxWidth: 620 }}>As faixas de cada família são a referência dos parâmetros de controle na formulação. As famílias de autor (Corvitto e outros) são travadas — servem de referência. As autorais você cria, edita e duplica.</div>
         </div>
-        <button onClick={() => setCreating((v) => !v)} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ nova família</button>
+        <button onClick={abrirCriar} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 10, padding: "10px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>+ nova família</button>
       </div>
 
       {creating && (
-        <div style={{ background: "#fff", border: `1px solid ${T.goldLine}`, borderRadius: 14, padding: 16, margin: "12px 0", display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={{ flex: 1, minWidth: 200 }}><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Nome da nova família</span>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ex: Creme de caramelo salgado" style={inp} /></label>
-          <label style={{ minWidth: 200 }}><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Basear as faixas em</span>
-            <select value={baseId} onChange={(e) => setBaseId(e.target.value)} style={sel}>{fams.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select></label>
-          <button onClick={() => { if (newName.trim()) { const id = onCreate(newName.trim(), baseId); setNewName(""); setCreating(false); setOpen(id); } }} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Criar</button>
-          <button onClick={() => setCreating(false)} style={{ background: "none", color: T.soft, border: "none", padding: "10px 8px", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+        <div style={{ background: "#fff", border: `1px solid ${T.goldLine}`, borderRadius: 14, padding: 16, margin: "12px 0" }}>
+          <div style={{ fontSize: 10.5, letterSpacing: 0.5, textTransform: "uppercase", color: T.gold, fontWeight: 700, marginBottom: 12 }}>{dupSrc ? "Duplicar família" : "Nova família"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <label><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Nome</span>
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="ex: Pistache Siciliano" style={inp} /></label>
+            {!dupSrc && (
+              <label><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Basear faixas em</span>
+                <select value={baseId} onChange={(e) => setBaseId(e.target.value)} style={sel}>{fams.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}</select></label>
+            )}
+            <label><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Tipo</span>
+              <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={sel}>{TIPOS_FAMILIA.map((t) => <option key={t} value={t}>{t}</option>)}</select></label>
+            <label><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Linha / escola</span>
+              <select value={linha} onChange={(e) => setLinha(e.target.value)} style={sel}>
+                <option value="">Minhas famílias (sem linha)</option>
+                {linhasExistentes.map((l) => <option key={l} value={l}>{l}</option>)}
+                <option value="__nova__">+ Nova linha…</option>
+              </select></label>
+            {linha === "__nova__" && (
+              <label><span style={{ display: "block", fontSize: 11, color: T.soft, marginBottom: 4 }}>Nome da nova linha</span>
+                <input value={novaLinha} onChange={(e) => setNovaLinha(e.target.value)} placeholder="ex: ChefPier, Di Paolo" style={inp} /></label>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button onClick={confirmar} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>{dupSrc ? "Duplicar" : "Criar"}</button>
+            <button onClick={() => { setCreating(false); setDupSrc(null); }} style={{ background: "none", color: T.soft, border: "none", padding: "10px 8px", fontSize: 13, cursor: "pointer" }}>Cancelar</button>
+          </div>
         </div>
       )}
 
@@ -633,6 +668,7 @@ function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetPara
                     )}
                     {f.locked ? <span style={{ fontSize: 9.5, background: T.bg, color: T.soft, padding: "2px 8px", borderRadius: 20, fontWeight: 600, border: `1px solid ${T.line}` }}>🔒 referência</span>
                              : <span style={{ fontSize: 9.5, background: "#e9f3ee", color: "#1a7d54", padding: "2px 8px", borderRadius: 20, fontWeight: 700 }}>editável ✎</span>}
+                    {f.tipo && <span style={{ fontSize: 9.5, background: T.bg, color: T.soft, padding: "2px 8px", borderRadius: 20, fontWeight: 600, border: `1px solid ${T.line}` }}>{f.tipo}</span>}
                     <span onClick={() => setOpen(isOpen ? null : f.id)} style={{ fontSize: 18, color: T.soft, cursor: "pointer" }}>{isOpen ? "▾" : "▸"}</span>
                   </div>
                   {isOpen && (
@@ -655,7 +691,7 @@ function FamiliesTab({ fams, version, onCreate, onDuplicate, onDelete, onSetPara
                       <div style={{ fontSize: 11, color: T.soft, marginTop: 8, fontStyle: "italic" }}>PAC não aparece aqui: ele vem da temperatura de serviço (tabela do Corvitto), ajustável em qualquer família.</div>
                       <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
                         <button onClick={() => onUse(f.id)} style={{ background: T.goldBg, color: T.gold, border: `1px solid ${T.goldLine}`, borderRadius: 9, padding: "8px 14px", fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Usar na formulação</button>
-                        <button onClick={() => onDuplicate(f.id)} style={{ background: "#fff", color: T.ink, border: `1px solid ${T.line}`, borderRadius: 9, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Duplicar{f.locked ? " (para editar)" : ""}</button>
+                        <button onClick={() => abrirDuplicar(f)} style={{ background: "#fff", color: T.ink, border: `1px solid ${T.line}`, borderRadius: 9, padding: "8px 14px", fontSize: 12.5, cursor: "pointer" }}>Duplicar{f.locked ? " (para editar)" : ""}</button>
                         {!f.locked && <button onClick={() => onDelete(f.id)} style={{ background: "none", color: "#c01f2f", border: "none", padding: "8px 10px", fontSize: 12.5, cursor: "pointer", marginLeft: "auto" }}>Excluir</button>}
                       </div>
                       {f.locked && <div style={{ fontSize: 11.5, color: T.soft, marginTop: 8 }}>Esta é uma família de referência ({f.author}) e não pode ser alterada. Para criar sua versão, use <b>Duplicar</b> — a cópia fica editável e não afeta a original.</div>}
@@ -1081,17 +1117,17 @@ export default function GelatoLab({ session }) {
   const [customFams, setCustomFams] = useState([]); // famílias criadas pelo usuário
   const [famVersion, setFamVersion] = useState(0); // força re-render ao editar faixas
   const allFamilies = [...FAMILIES, ...customFams];
-  const createFamily = (name, baseId) => {
+  const createFamily = (name, baseId, tipo, linha) => {
     const id = "custom-" + Date.now();
     FAMILY_RANGES[id] = { ...FAMILY_RANGES[baseId] };
     FAMILY_PARAMS[id] = JSON.parse(JSON.stringify(FAMILY_PARAMS[baseId]));
     FAMILY_PAC_OFFSET[id] = FAMILY_PAC_OFFSET[baseId] || 0;
-    setCustomFams((p) => [...p, { id, label: name, author: "Autoral", locked: false, baseLabel: allFamilies.find((f) => f.id === baseId)?.label }]);
+    setCustomFams((p) => [...p, { id, label: name, author: (linha && linha.trim()) || "Autoral", locked: false, tipo: tipo || "creme", baseLabel: allFamilies.find((f) => f.id === baseId)?.label }]);
     return id;
   };
-  const duplicateFamily = (srcId) => {
+  const duplicateFamily = (srcId, name, tipo, linha) => {
     const src = allFamilies.find((f) => f.id === srcId);
-    const id = createFamily(`${src.label} (cópia)`, srcId);
+    const id = createFamily(name || `${src.label} (cópia)`, srcId, tipo || src.tipo, linha);
     return id;
   };
   const deleteFamily = (id) => { setCustomFams((p) => p.filter((f) => f.id !== id)); };
