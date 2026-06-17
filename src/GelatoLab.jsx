@@ -969,22 +969,25 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
 // ---- Curva de congelamento (tema claro) ----
 function Curve({ curva, serveAt, quenelleAt }) {
   const pts0 = (curva && curva.length) ? curva : [{ f: 0, t: -2 }, { f: 90, t: -30 }];
-  // eixo X = temperatura (do mais quente ao mais frio); Y = % congelada
-  const tMin = Math.min(...pts0.map((p) => p.t), serveAt) - 1; // mais frio (esquerda→direita: 0 a tMin)
+  const COL_SERV = "#2f6f7e";  // azul-petróleo (serviço / espatulável)
+  const COL_QUEN = T.gold;     // dourado (quenelle)
+  // eixo X = temperatura; vai do 0 até ~6° depois do ponto de serviço (proporcional, sem rabo gigante)
+  const tMin = Math.min(serveAt, quenelleAt) - 6;
   const tMax = 0;
+  // só os pontos da curva dentro da faixa visível
+  const visiveis = pts0.filter((p) => p.t >= tMin);
   const W = 440, H = 240, padL = 40, padB = 46, padT = 16, padR = 12;
   const x = (t) => padL + ((t - tMax) / (tMin - tMax)) * (W - padL - padR);
   const y = (fr) => padT + (1 - fr / 100) * (H - padT - padB);
-  const pts = pts0.map((p) => `${x(p.t)},${y(p.f)}`);
+  const pts = visiveis.map((p) => `${x(p.t)},${y(p.f)}`);
   const sx = x(serveAt), sy = y(75);
   const qx = x(quenelleAt), qy = y(70);
-  // marcas de temperatura no eixo X
-  const ticks = []; const step = Math.ceil(Math.abs(tMin) / 6);
+  const ticks = []; const step = Math.max(2, Math.ceil(Math.abs(tMin) / 6));
   for (let t = 0; t >= tMin; t -= step) ticks.push(t);
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)", height: "100%", boxSizing: "border-box" }}>
       <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 2 }}>Curva de congelamento</div>
-      <div style={{ fontSize: 12.5, color: T.soft, marginBottom: 10 }}>Serve a <b style={{ color: T.straw }}>{serveAt}°C</b> (75% congelado) · quenelle a <b style={{ color: T.gold }}>{quenelleAt}°C</b> (70%).</div>
+      <div style={{ fontSize: 12.5, color: T.soft, marginBottom: 10 }}>Serve a <b style={{ color: COL_SERV }}>{serveAt}°C</b> (75% congelado) · quenelle a <b style={{ color: COL_QUEN }}>{quenelleAt}°C</b> (70%).</div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%">
         {[0, 25, 50, 70, 75, 100].map((p) => (<g key={p}><line x1={padL} y1={y(p)} x2={W - padR} y2={y(p)} stroke={p === 75 || p === 70 ? T.goldBg : T.line} strokeWidth="1" /><text x={padL - 6} y={y(p) + 4} fill={T.soft} fontSize="10" textAnchor="end" fontFamily="'DM Mono', monospace">{p}%</text></g>))}
         {ticks.map((t) => <text key={t} x={x(t)} y={H - padB + 16} fill={T.soft} fontSize="10" textAnchor="middle" fontFamily="'DM Mono', monospace">{t}°</text>)}
@@ -992,15 +995,15 @@ function Curve({ curva, serveAt, quenelleAt }) {
         <rect x={padL} y={y(80)} width={W - padL - padR} height={y(70) - y(80)} fill={T.goldBg} opacity="0.5" />
         {/* curva física */}
         <path d={"M" + pts.join(" L")} fill="none" stroke={T.gold} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {/* quenelle (70%) */}
-        <line x1={qx} y1={padT} x2={qx} y2={H - padB} stroke={T.gold} strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
-        <circle cx={qx} cy={qy} r="5" fill="#fff" stroke={T.gold} strokeWidth="2" />
-        <text x={qx} y={H - padB + 32} fill={T.gold} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">quenelle {quenelleAt}°</text>
-        {/* serviço (75%) */}
-        <line x1={sx} y1={padT} x2={sx} y2={H - padB} stroke={T.straw} strokeWidth="1" strokeDasharray="4 4" />
-        <circle cx={sx} cy={sy} r="7" fill={T.straw} /><circle cx={sx} cy={sy} r="7" fill="none" stroke="#fff" strokeWidth="2.5" />
-        <text x={sx} y={sy - 12} fill={T.straw} fontSize="10" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">75%</text>
-        <text x={sx} y={H - padB + 44} fill={T.straw} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">serviço {serveAt}°</text>
+        {/* quenelle (70%) — dourado */}
+        <line x1={qx} y1={padT} x2={qx} y2={H - padB} stroke={COL_QUEN} strokeWidth="1" strokeDasharray="2 3" opacity="0.7" />
+        <circle cx={qx} cy={qy} r="6" fill="#fff" stroke={COL_QUEN} strokeWidth="2.5" />
+        <text x={qx} y={H - padB + 32} fill={COL_QUEN} fontSize="9.5" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">quenelle {quenelleAt}°</text>
+        {/* serviço (75%) — azul-petróleo */}
+        <line x1={sx} y1={padT} x2={sx} y2={H - padB} stroke={COL_SERV} strokeWidth="1" strokeDasharray="4 4" />
+        <circle cx={sx} cy={sy} r="7.5" fill={COL_SERV} /><circle cx={sx} cy={sy} r="7.5" fill="none" stroke="#fff" strokeWidth="2.5" />
+        <text x={sx} y={sy - 13} fill={COL_SERV} fontSize="10" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">75%</text>
+        <text x={sx} y={H - padB + 44} fill={COL_SERV} fontSize="9.5" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">serviço {serveAt}°</text>
       </svg>
     </div>
   );
