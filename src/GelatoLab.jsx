@@ -308,6 +308,14 @@ function compute(items, target, opts = {}) {
     row("other", "Outros Sólidos", P.other, round(pct("otherSol"), 1), "%", "exceto leite em pó"),
     row("neutro", "Neutros e Bases", P.neutro, round(pct("neutroG"), 2), "%", "emulsificantes, estabilizantes"),
     row("solids", "Sólidos Totais", P.solids, round(stPct, 1), "%", "gorduras + açúcares + SLNG + outros"),
+    { key: "water", label: "Água / Líquidos", min: null, max: null, val: round((h2oFrac) * 100, 1), unit: "%", note: "tudo que não é sólido", info: true },
+    (() => {
+      // relação água/sólidos: alvo derivado da faixa de sólidos do tipo
+      const sR = P.solids;
+      const ratio = stPct > 0 ? (100 - stPct) / stPct : 0;
+      const rRange = sR ? [round((100 - sR[1]) / sR[1], 2), round((100 - sR[0]) / sR[0], 2)] : null;
+      return { key: "ratio", label: "Relação Água / Sólidos", min: rRange ? rRange[0] : null, max: rRange ? rRange[1] : null, ref: rRange ? round((rRange[0] + rRange[1]) / 2, 2) : null, val: round(ratio, 2), unit: "", note: "equilíbrio corpo × água", na: !rRange };
+    })(),
     row(mostraPct ? "pod" : "pod", mostraPct ? "SP" : "POD", _pod.range, _pod.val, _pod.unit, mostraPct ? "poder de doçura" : "doçura (pontos/kg)", null, { txt: _pod.altTxt, range: _pod.altRange }),
     row("pac", mostraPct ? "AFP" : "PAC", _pac.range, _pac.val, _pac.unit, mostraPct ? `poder anticongelante · alvo ${target.servingTemp}°C` : `anticongelante · alvo p/ ${target.servingTemp}°C`, _pac.ref, { txt: _pac.altTxt, range: _pac.altRange }),
     row("fruit", "Frutas", P.fruit, round(pct("fruitG"), 1), "%", "fruta, sucos"),
@@ -881,6 +889,7 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
     other: { below: "aumente os outros sólidos.", above: "reduza os outros sólidos." },
     fruit: { below: "adicione mais fruta ou suco.", above: "reduza a fruta." },
     alcohol: { below: "adicione um pouco mais de álcool.", above: "reduza o álcool (sobe muito o PAC)." },
+    ratio: { below: "sólidos demais p/ água — adicione leite/água, ou reduza pó/açúcar.", above: "água demais — adicione sólidos (leite em pó, açúcar) para encorpar." },
   };
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 3px rgba(60,58,54,.04)" }}>
@@ -943,10 +952,10 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
               return (
                 <tr key={m.key} style={{ borderBottom: `1px solid ${T.bg}` }}>
                   <td style={{ padding: "8px 8px", fontSize: 12.5, color: T.soft }}>{m.label}<span style={{ color: T.soft, fontSize: 11, marginLeft: 6 }}>{m.note}</span></td>
-                  <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: T.soft, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.min}–{m.max}{m.unit}</td>
-                  <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: "#bcb5a3", fontFamily: "'DM Mono', monospace" }}>—</td>
+                  <td style={{ padding: "8px 8px", fontSize: 12, textAlign: "right", color: T.soft, fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{m.min != null ? `${m.min}–${m.max}${m.unit}` : "—"}</td>
+                  <td style={{ padding: "8px 8px", fontSize: 13.5, textAlign: "right", color: m.val != null ? T.ink : "#bcb5a3", fontWeight: m.val != null ? 700 : 400, fontFamily: "'DM Mono', monospace" }}>{m.val != null ? `${m.val}${m.unit}` : "—"}</td>
                   <td style={{ padding: "8px 8px" }}></td>
-                  <td style={{ padding: "8px 8px", textAlign: "right" }}><span style={{ fontSize: 9.5, color: "#bcb5a3" }}>info</span></td>
+                  <td style={{ padding: "8px 8px", textAlign: "right" }}><span style={{ fontSize: 9.5, color: "#bcb5a3" }}>ref.</span></td>
                 </tr>
               );
             }
@@ -1581,8 +1590,8 @@ export default function GelatoLab({ session }) {
     const nutriHtml = n ? '<h3 style="font-size:15px">Informação nutricional <span style="font-size:11px;color:#999;font-weight:normal">· porção 100g</span></h3>' +
       '<table><thead><tr><th>Nutriente</th><th>Por porção</th><th>%VD*</th></tr></thead><tbody>' +
       [["Valor energético", n.kcal, "kcal", VDp.kcal], ["Carboidratos totais", n.carb, "g", VDp.carb], ["&nbsp;&nbsp;Açúcares totais", n.sug, "g", null], ["&nbsp;&nbsp;Açúcares adicionados", n.sugAdd, "g", null], ["Proteínas", n.prot, "g", VDp.prot], ["Gorduras totais", n.fat, "g", VDp.fat], ["&nbsp;&nbsp;Gorduras saturadas", n.sat, "g", VDp.sat], ["&nbsp;&nbsp;Gorduras trans", n.trans, "g", null], ["Fibra alimentar", n.fib, "g", VDp.fib], ["Sódio", n.sod, "mg", VDp.sod]].map(([l, v, u, ref]) => `<tr><td>${l}</td><td class=n>${Math.round((v||0)*10)/10} ${u}</td><td class=n>${vd(v||0, ref)}</td></tr>`).join("") +
-      '</tbody></table><p style="font-size:10px;color:#999">*% Valores Diários (dieta 2.000 kcal). Estimativa orientativa — não substitui laudo para rótulo comercial.</p>' : "";
-    const html = '<!doctype html><meta charset=utf-8><title>' + recipeName + '</title><style>body{font-family:Georgia,serif;color:#3d3a36;max-width:720px;margin:30px auto;padding:0 24px}h1{font-size:25px;margin:0 0 2px}h3{font-size:15px;margin-top:22px}.s{color:#a07d2c;font-size:12px;letter-spacing:2px;text-transform:uppercase}.m{display:flex;gap:20px;font-size:13px;color:#666;margin:8px 0 18px;border-bottom:2px solid #eee;padding-bottom:12px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th{font-size:10px;text-transform:uppercase;color:#a07d2c;text-align:right;padding:6px 8px;border-bottom:1.5px solid #ddd}th:first-child{text-align:left}td{padding:5px 8px;font-size:13px;border-bottom:1px solid #f3f3f3}td.n{text-align:right}.hint{background:#fbf2dd;border-radius:8px;padding:10px 14px;font-size:12px;color:#8a6d1e;margin-bottom:16px}@media print{.hint{display:none}}</style>' +
+      '</tbody></table><p style="font-size:10px;color:#444">*% Valores Diários (dieta 2.000 kcal). Valores por porção de 100g. Estimativa orientativa — não substitui laudo para rótulo comercial.</p>' : "";
+    const html = '<!doctype html><meta charset=utf-8><title>' + recipeName + '</title><style>body{font-family:Georgia,serif;color:#111;max-width:720px;margin:30px auto;padding:0 24px}h1{font-size:25px;margin:0 0 2px;color:#000}h3{font-size:15px;margin-top:22px;color:#000}.s{color:#000;font-size:12px;letter-spacing:2px;text-transform:uppercase;font-weight:bold}.m{display:flex;gap:20px;font-size:13px;color:#222;margin:8px 0 18px;border-bottom:2px solid #000;padding-bottom:12px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th{font-size:10px;text-transform:uppercase;color:#000;text-align:right;padding:6px 8px;border-bottom:2px solid #000;font-weight:bold}th:first-child{text-align:left}td{padding:5px 8px;font-size:13px;border-bottom:1px solid #ccc;color:#111}td.n{text-align:right;color:#000}.hint{background:#fbf2dd;border-radius:8px;padding:10px 14px;font-size:12px;color:#8a6d1e;margin-bottom:16px}@media print{.hint{display:none}}</style>' +
       // 1. Cabeçalho
       '<div class=hint>Vai abrir a janela de impressão. Escolha "Salvar como PDF" (ou imprima direto).</div><div class=s>GelatoLab</div><h1>' + recipeName + '</h1>' + (chef ? '<div style="font-style:italic;color:#7a7264;margin:-2px 0 6px;font-family:Georgia,serif">por ' + chef + (school && school !== "Autoral" ? ' · linha ' + school : '') + '</div>' : (school && school !== "Autoral" ? '<div style="font-style:italic;color:#7a7264;margin:-2px 0 6px">linha ' + school + '</div>' : '')) + '<div class=m><span>' + kind + '</span><span>' + famLabel(family) + '</span><span>' + servingTemp + '°C</span><span>' + (targetWeight >= 1000 ? targetWeight / 1000 + "kg" : targetWeight + "g") + '</span></div>' +
       // 2. Foto
@@ -1760,10 +1769,6 @@ export default function GelatoLab({ session }) {
           </div>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <NutriTable n={r.nutriPer100} cobPct={r.nutriCobPct} porcao={100} rows={r.rows} nome={recipeName} totalGrams={r.totalGrams} />
-        </div>
-
         <div style={{ background: "#fff", borderRadius: 14, padding: "12px 16px", border: `1px solid ${T.line}`, marginBottom: 16 }}>
           <div style={{ fontSize: 10, letterSpacing: 1, color: T.gold, marginBottom: 8, fontWeight: 700 }}>MÉTODO DE BALANCEAMENTO</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -1815,6 +1820,10 @@ export default function GelatoLab({ session }) {
         </div>
 
         <MonitorPanel monitor={r.monitor} servingTemp={servingTemp} pacTarget={r.pacTarget} pacNow={r.pacPerKg} suggestions={dicas ? r.suggestions : []} onApplySwap={applySwap} dicas={dicas} />
+
+        <div style={{ marginTop: 16, marginBottom: 16 }}>
+          <NutriTable n={r.nutriPer100} cobPct={r.nutriCobPct} porcao={100} rows={r.rows} nome={recipeName} totalGrams={r.totalGrams} />
+        </div>
 
         <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, overflow: "hidden", marginTop: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)" }}>
           <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.line}`, fontFamily: "'Fraunces', Georgia, serif", fontSize: 15, fontWeight: 600, color: T.ink }}>Observações</div>
