@@ -267,6 +267,17 @@ function compute(items, target, opts = {}) {
   for (let f = 0; f <= 90; f += 5) curvaFisica.push({ f, t: tempParaF(f) });
   const serveAt = tempParaF(75);    // temperatura de serviço = 75% congelado
   const quenelleAt = tempParaF(70); // ponto de quenelle = 70% congelado
+  // === TABELA NUTRICIONAL (soma proporcional ao peso, por 100g da mistura) ===
+  const NUTRI_KEYS = ["kcal", "prot", "carb", "sug", "sugAdd", "fat", "sat", "trans", "fib", "sod"];
+  const nutriTot = {}; NUTRI_KEYS.forEach((k) => nutriTot[k] = 0);
+  let nutriCobertura = 0; // quantos gramas têm dados (para avisar se incompleto)
+  rows.forEach((r) => {
+    const ing = r.it.ingredient;
+    const nd = ing.nutri || NUTRI[ing.id]; // rótulo cadastrado tem prioridade
+    if (nd) { nutriCobertura += r.d.g; NUTRI_KEYS.forEach((k) => { nutriTot[k] += (nd[k] || 0) * r.d.g / 100; }); }
+  });
+  const nutriPer100 = {}; NUTRI_KEYS.forEach((k) => nutriPer100[k] = round((nutriTot[k] / safeM) * 100, k === "sod" ? 0 : 1));
+  const nutriCobPct = round((nutriCobertura / safeM) * 100, 0); // % do peso com dados
   // alvos dependentes da temperatura + família (precisam vir ANTES do painel)
   const pacTarget = target.pacOverride ?? pacTargetFor(target.servingTemp, target.family);
   const pacRange = { min: pacTarget - PAC_TOLERANCE, max: pacTarget + PAC_TOLERANCE };
@@ -329,6 +340,7 @@ function compute(items, target, opts = {}) {
     msnfPct: round((totMsnf / safeM) * 100, 1),
     pacTarget: round(pacTarget), impliedServingTemp: round(tempForPac(pacPerKg), 1),
     curvaFisica, serveAt: round(serveAt, 1), quenelleAt: round(quenelleAt, 1),
+    nutriPer100, nutriCobPct,
     costPerKg: round(totCost / (safeM / 1000), 2), costTotal: round(totCost, 2),
     monitor, metrics, suggestions: buildSuggestions(rows, metrics, safeM, opts),
   };
@@ -408,6 +420,29 @@ const CATEGORIES = [
   { id: "nuts", label: "Frutos secos / picados" }, { id: "alcohol", label: "Álcool" },
   { id: "other", label: "Água e outros" },
 ];
+// === DADOS NUTRICIONAIS por 100g (padrão RDC 429/IN75) ===
+// Fontes: TACO/UNICAMP e USDA. Valores são ESTIMATIVA orientativa — para rótulo
+// comercial, confirme com laudo/responsável técnico. Campos:
+// kcal, prot, carb, sug (açúcares totais), sugAdd (adicionados), fat, sat, trans, fib, sod (mg)
+const NUTRI = {
+  water:        { kcal: 0,   prot: 0,   carb: 0,    sug: 0,    sugAdd: 0, fat: 0,    sat: 0,   trans: 0, fib: 0,   sod: 0 },
+  "milk-whole": { kcal: 60,  prot: 3.2, carb: 4.7,  sug: 4.7,  sugAdd: 0, fat: 3.3,  sat: 1.9, trans: 0, fib: 0,   sod: 50 },
+  "milk-semi":  { kcal: 46,  prot: 3.3, carb: 4.8,  sug: 4.8,  sugAdd: 0, fat: 1.6,  sat: 1.0, trans: 0, fib: 0,   sod: 52 },
+  "milk-skim":  { kcal: 35,  prot: 3.4, carb: 4.9,  sug: 4.9,  sugAdd: 0, fat: 0.2,  sat: 0.1, trans: 0, fib: 0,   sod: 52 },
+  "cream-35":   { kcal: 337, prot: 2.1, carb: 3.0,  sug: 3.0,  sugAdd: 0, fat: 35,   sat: 22,  trans: 0.8, fib: 0, sod: 38 },
+  "cream-36":   { kcal: 345, prot: 2.1, carb: 2.9,  sug: 2.9,  sugAdd: 0, fat: 36,   sat: 22.5,trans: 0.8, fib: 0, sod: 38 },
+  "cream-38":   { kcal: 361, prot: 2.0, carb: 2.8,  sug: 2.8,  sugAdd: 0, fat: 38,   sat: 23.7,trans: 0.9, fib: 0, sod: 36 },
+  "cream-18":   { kcal: 195, prot: 2.6, carb: 3.5,  sug: 3.5,  sugAdd: 0, fat: 18,   sat: 11.2,trans: 0.4, fib: 0, sod: 42 },
+  smp:          { kcal: 362, prot: 34.7,carb: 52,   sug: 52,   sugAdd: 0, fat: 0.9,  sat: 0.6, trans: 0, fib: 0,   sod: 535 },
+  wmp:          { kcal: 497, prot: 25.4,carb: 39.2, sug: 39.2, sugAdd: 0, fat: 26.9, sat: 16.7,trans: 0.9, fib: 0, sod: 405 },
+  "smp-semi":   { kcal: 430, prot: 30,  carb: 45,   sug: 45,   sugAdd: 0, fat: 13,   sat: 8.1, trans: 0.5, fib: 0, sod: 470 },
+  dextrose:     { kcal: 380, prot: 0,   carb: 95,   sug: 95,   sugAdd: 95,fat: 0,    sat: 0,   trans: 0, fib: 0,   sod: 0 },
+  inverted:     { kcal: 310, prot: 0,   carb: 78,   sug: 78,   sugAdd: 78,fat: 0,    sat: 0,   trans: 0, fib: 0,   sod: 5 },
+  honey:        { kcal: 309, prot: 0.4, carb: 84,   sug: 82,   sugAdd: 0, fat: 0,    sat: 0,   trans: 0, fib: 0.2, sod: 5 },
+  sucrose:      { kcal: 387, prot: 0,   carb: 100,  sug: 100,  sugAdd: 100,fat: 0,   sat: 0,   trans: 0, fib: 0,   sod: 1 },
+  yolk:         { kcal: 322, prot: 15.9,carb: 1.0,  sug: 0.5,  sugAdd: 0, fat: 28.6, sat: 9.5, trans: 0, fib: 0,   sod: 48 },
+  lactose:      { kcal: 387, prot: 0,   carb: 100,  sug: 100,  sugAdd: 0, fat: 0,    sat: 0,   trans: 0, fib: 0,   sod: 1 },
+};
 const INGREDIENTS = [
   { id: "water", cat: "other", name: "Água", water: 100, fat: 0, msnf: 0, otherSolids: 0, sugars: {}, podDirect: 0, pacDirect: 0, alcohol: 0, lossClean: 0, lossCook: 0, lossWaste: 0, costPerKg: 0 },
   { id: "milk-whole", cat: "dairy", name: "Leite integral", water: 88, fat: 3.6, msnf: 8.4, otherSolids: 0, sugars: {}, podDirect: 0, pacDirect: 4, alcohol: 0, lossClean: 0, lossCook: 0, lossWaste: 0, costPerKg: 4.5 },
@@ -1088,6 +1123,13 @@ function IngredientsTab({ db, setDb }) {
               <Field label="Dextrose %"><input type="number" value={editing.sugars.dextrose || 0} onChange={(e) => setEditing({ ...editing, sugars: { ...editing.sugars, dextrose: num(e.target.value) } })} style={inp} /></Field>
               <Field label="Outros sól. %"><input type="number" value={editing.otherSolids} onChange={(e) => setEditing({ ...editing, otherSolids: num(e.target.value) })} style={inp} /></Field>
             </div>
+            <div style={{ fontSize: 10.5, letterSpacing: 1, color: T.sun, fontWeight: 600, margin: "12px 0 6px", textTransform: "uppercase" }}>Rótulo nutricional (por 100g)</div>
+            <div style={{ fontSize: 11, color: T.soft, marginBottom: 8 }}>Opcional. Copie da embalagem do seu fornecedor — deixa a tabela nutricional precisa para esta marca.</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+              {[["kcal", "Energia kcal"], ["prot", "Proteínas g"], ["carb", "Carboidratos g"], ["sug", "Açúcares totais g"], ["sugAdd", "Açúc. adicionados g"], ["fat", "Gorduras totais g"], ["sat", "Gord. saturadas g"], ["trans", "Gord. trans g"], ["fib", "Fibra g"], ["sod", "Sódio mg"]].map(([k, label]) => (
+                <Field key={k} label={label}><input type="number" value={editing.nutri?.[k] ?? ""} onChange={(e) => setEditing({ ...editing, nutri: { ...(editing.nutri || {}), [k]: e.target.value === "" ? undefined : num(e.target.value) } })} style={inp} /></Field>
+              ))}
+            </div>
             <div style={{ fontSize: 10.5, letterSpacing: 1, color: T.sun, fontWeight: 600, margin: "12px 0 6px", textTransform: "uppercase" }}>Preço e perdas</div>
             <Field label="Preço de compra R$/kg"><input type="number" value={editing.costPerKg} onChange={(e) => setEditing({ ...editing, costPerKg: num(e.target.value) })} style={inp} /></Field>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
@@ -1103,6 +1145,172 @@ function IngredientsTab({ db, setDb }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// alérgenos de declaração obrigatória (Anvisa RDC 26/2015) — detecção por palavra-chave no nome
+const ALERGENOS = [
+  { termo: "leite", chaves: ["leite", "creme", "iogurte", "mascarpone", "ricotta", "manteiga", "lactose", "nata"] },
+  { termo: "ovo", chaves: ["ovo", "gema", "clara"] },
+  { termo: "amêndoa", chaves: ["amêndoa", "amendoa"] },
+  { termo: "avelã", chaves: ["avelã", "avela"] },
+  { termo: "castanhas", chaves: ["castanha", "pistache", "noz", "gergelim", "praliné", "nutella"] },
+  { termo: "soja", chaves: ["soja"] },
+  { termo: "trigo (glúten)", chaves: ["trigo", "malte", "aveia", "cevada"] },
+];
+function detectarAlergenos(rows) {
+  const achados = new Set();
+  rows.forEach((r) => {
+    const nome = (r.name || "").toLowerCase();
+    ALERGENOS.forEach((a) => { if (a.chaves.some((c) => nome.includes(c))) achados.add(a.termo); });
+  });
+  return [...achados];
+}
+// Gera o rótulo (tabela + lupa + alérgenos + ingredientes) num canvas em alta resolução e baixa PNG
+function gerarRotuloPNG({ nome, n, porcao, rows, totalGrams }) {
+  const S = 3; // escala (≈300 DPI)
+  const W = 600, H = 820;
+  const cv = document.createElement("canvas");
+  cv.width = W * S; cv.height = H * S;
+  const c = cv.getContext("2d"); c.scale(S, S);
+  c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
+  c.fillStyle = "#000";
+  let y = 40;
+  // título
+  c.font = "bold 26px Arial"; c.fillText(nome || "Gelato", 30, y); y += 34;
+  c.font = "13px Arial"; c.fillStyle = "#555";
+  c.fillText("Rótulo orientativo — valide com responsável técnico antes de comercializar.", 30, y); y += 28;
+  c.fillStyle = "#000";
+  // lupa de advertência (IN 75)
+  const av = [];
+  if ((n.sugAdd || 0) >= 15) av.push("AÇÚCAR ADICIONADO");
+  if ((n.sat || 0) >= 6) av.push("GORDURA SATURADA");
+  if ((n.sod || 0) >= 300) av.push("SÓDIO");
+  if (av.length) {
+    const bw = 250, bx = 30;
+    c.fillStyle = "#000"; c.fillRect(bx, y, bw, 30 + av.length * 22);
+    c.fillStyle = "#fff"; c.font = "bold 15px Arial";
+    c.fillText("🔍 ALTO EM", bx + 12, y + 22);
+    c.font = "bold 14px Arial";
+    av.forEach((t, i) => c.fillText("• " + t, bx + 16, y + 44 + i * 22));
+    y += 30 + av.length * 22 + 28;
+  }
+  // tabela nutricional (quadro)
+  c.fillStyle = "#000"; c.font = "bold 18px Arial";
+  c.fillText("INFORMAÇÃO NUTRICIONAL", 30, y); y += 8;
+  c.font = "12px Arial"; c.fillStyle = "#333";
+  y += 16; c.fillText(`Porções por embalagem: ${Math.max(1, Math.round((totalGrams||1000)/porcao))}    Porção: ${porcao} g`, 30, y); y += 10;
+  const tx = 30, tw = W - 60;
+  c.strokeStyle = "#000"; c.lineWidth = 2; c.strokeRect(tx, y, tw, 0.1);
+  const VD = { kcal: 2000, carb: 300, sug: 0, sugAdd: 0, prot: 50, fat: 65, sat: 20, trans: 0, fib: 25, sod: 2400 };
+  const linhas = [
+    ["Valor energético", n.kcal, "kcal", VD.kcal, false],
+    ["Carboidratos totais", n.carb, "g", VD.carb, true],
+    ["  Açúcares totais", n.sug, "g", null, true],
+    ["  Açúcares adicionados", n.sugAdd, "g", VD.sugAdd, true],
+    ["Proteínas", n.prot, "g", VD.prot, true],
+    ["Gorduras totais", n.fat, "g", VD.fat, true],
+    ["  Gorduras saturadas", n.sat, "g", VD.sat, true],
+    ["  Gorduras trans", n.trans, "g", null, false],
+    ["Fibra alimentar", n.fib, "g", VD.fib, true],
+    ["Sódio", n.sod, "mg", VD.sod, true],
+  ];
+  y += 6;
+  c.font = "bold 12px Arial"; c.fillStyle = "#000";
+  c.fillText("", tx + 6, y + 14);
+  c.textAlign = "right"; c.fillText("Por porção", tx + tw - 90, y + 14); c.fillText("%VD*", tx + tw - 6, y + 14);
+  c.textAlign = "left"; y += 22;
+  c.beginPath(); c.moveTo(tx, y); c.lineTo(tx + tw, y); c.stroke();
+  linhas.forEach(([label, val, unit, ref, bold]) => {
+    y += 22;
+    c.font = (bold ? "bold " : "") + "13px Arial"; c.fillStyle = "#000";
+    c.textAlign = "left"; c.fillText(label, tx + 6, y - 5);
+    c.textAlign = "right";
+    c.fillText(`${Math.round((val||0)*10)/10} ${unit}`, tx + tw - 80, y - 5);
+    const vd = ref ? Math.round(((val||0) / ref) * 100) + "%" : "—";
+    c.fillText(vd, tx + tw - 6, y - 5);
+    c.textAlign = "left";
+    c.strokeStyle = "#ccc"; c.lineWidth = 1; c.beginPath(); c.moveTo(tx, y); c.lineTo(tx + tw, y); c.stroke();
+  });
+  c.strokeStyle = "#000"; c.lineWidth = 2; c.strokeRect(tx, y - linhas.length * 22 - 22, tw, linhas.length * 22 + 22);
+  y += 14;
+  c.font = "10px Arial"; c.fillStyle = "#555";
+  c.fillText("*% Valores Diários com base em dieta de 2.000 kcal.", tx, y); y += 24;
+  // ingredientes (ordem decrescente)
+  const ord = [...rows].filter((r) => r.g > 0).sort((a, b) => b.g - a.g);
+  c.font = "bold 13px Arial"; c.fillStyle = "#000"; c.fillText("INGREDIENTES:", tx, y); y += 18;
+  c.font = "12px Arial";
+  const txt = ord.map((r) => r.name).join(", ") + ".";
+  wrapText(c, txt, tx, y, tw, 16); y += Math.ceil(c.measureText(txt).width / tw) * 16 + 20;
+  // alérgenos
+  const alg = detectarAlergenos(rows);
+  if (alg.length) {
+    c.font = "bold 13px Arial";
+    const ay = H - 60;
+    c.fillStyle = "#000";
+    wrapText(c, "ALÉRGICOS: CONTÉM " + alg.join(", ").toUpperCase() + ".", tx, ay, tw, 16);
+    c.font = "11px Arial"; c.fillStyle = "#555";
+    c.fillText("PODE CONTER outras castanhas e derivados de leite.", tx, ay + 20);
+  }
+  // baixa
+  const url = cv.toDataURL("image/png");
+  const a = document.createElement("a"); a.href = url; a.download = `rotulo-${(nome||"gelato").replace(/\s+/g, "-").toLowerCase()}.png`; a.click();
+}
+function wrapText(ctx, text, x, y, maxW, lh) {
+  const words = text.split(" "); let line = ""; let yy = y;
+  words.forEach((w) => {
+    const test = line + w + " ";
+    if (ctx.measureText(test).width > maxW && line) { ctx.fillText(line, x, yy); line = w + " "; yy += lh; }
+    else line = test;
+  });
+  ctx.fillText(line, x, yy);
+}
+
+function NutriTable({ n, cobPct, porcao = 100, rows, nome, totalGrams }) {
+  if (!n) return null;
+  const fator = porcao / 100;
+  const v = (x) => Math.round(x * fator * 10) / 10;
+  // valores diários de referência (RDC 429/IN75, dieta 2000 kcal)
+  const VD = { kcal: 2000, carb: 300, sug: 50, prot: 50, fat: 65, sat: 20, fib: 25, sod: 2400 };
+  const vd = (val, ref) => ref ? Math.round((val * fator / ref) * 100) : null;
+  const linha = (label, key, unit, mostraVD = true) => (
+    <tr style={{ borderBottom: `1px solid ${T.bg}` }}>
+      <td style={{ padding: "6px 4px", fontSize: 12.5, color: T.ink }}>{label}</td>
+      <td style={{ padding: "6px 4px", fontSize: 12.5, textAlign: "right", fontFamily: "'DM Mono', monospace", color: T.ink }}>{v(n[key])}{unit}</td>
+      <td style={{ padding: "6px 4px", fontSize: 12, textAlign: "right", fontFamily: "'DM Mono', monospace", color: T.soft }}>{mostraVD && VD[key] ? `${vd(n[key], VD[key])}%` : "—"}</td>
+    </tr>
+  );
+  return (
+    <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+        <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, color: T.ink }}>Informação nutricional</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, color: T.soft }}>porção {porcao}g</span>
+          {rows && <button onClick={() => gerarRotuloPNG({ nome, n, porcao, rows, totalGrams })} style={{ background: T.gold, color: "#fff", border: "none", borderRadius: 8, padding: "6px 12px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>↓ Exportar rótulo (PNG)</button>}
+        </div>
+      </div>
+      {cobPct < 100 && <div style={{ fontSize: 11, color: "#9a6500", background: "#fff7e6", border: "1px solid #f0e0b8", borderRadius: 8, padding: "6px 9px", marginBottom: 8 }}>⚠ Estimativa parcial: {cobPct}% dos ingredientes têm dados nutricionais cadastrados. Valores aproximados.</div>}
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead><tr style={{ borderBottom: `2px solid ${T.ink}` }}>
+          <th style={{ textAlign: "left", fontSize: 10, textTransform: "uppercase", color: T.soft, padding: "4px", letterSpacing: 0.5 }}></th>
+          <th style={{ textAlign: "right", fontSize: 10, textTransform: "uppercase", color: T.soft, padding: "4px" }}>por porção</th>
+          <th style={{ textAlign: "right", fontSize: 10, textTransform: "uppercase", color: T.soft, padding: "4px" }}>%VD*</th>
+        </tr></thead>
+        <tbody>
+          {linha("Valor energético", "kcal", " kcal")}
+          {linha("Carboidratos totais", "carb", " g")}
+          {linha("  Açúcares totais", "sug", " g", false)}
+          {linha("  Açúcares adicionados", "sugAdd", " g")}
+          {linha("Proteínas", "prot", " g")}
+          {linha("Gorduras totais", "fat", " g")}
+          {linha("  Gorduras saturadas", "sat", " g")}
+          {linha("  Gorduras trans", "trans", " g", false)}
+          {linha("Fibra alimentar", "fib", " g")}
+          {linha("Sódio", "sod", " mg")}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 10, color: T.soft, marginTop: 8, lineHeight: 1.4 }}>*% Valores Diários com base em dieta de 2.000 kcal. Estimativa orientativa — não substitui laudo para rótulo comercial.</div>
     </div>
   );
 }
@@ -1367,13 +1575,26 @@ export default function GelatoLab({ session }) {
   const exportPDF = () => {
     const rowsHtml = liveItems.map((it, i) => { const d = r.rows[i]; return `<tr><td>${it.ingredient.name}</td><td class=n>${fmt2(d.g * scale)}</td><td class=n>${fmt2(d.fat * scale)}</td><td class=n>${fmt2(d.pod * scale)}</td><td class=n>${fmt2(d.msnf * scale)}</td><td class=n>${fmt2(d.st * scale)}</td><td class=n>${fmt2(d.pac * scale)}</td></tr>`; }).join("");
     const monHtml = r.monitor.filter((m) => m.status !== "na").map((m) => `<tr><td>${m.label}</td><td class=n>${m.min}${m.unit}</td><td class=n>${m.max}${m.unit}</td><td class=n><b>${m.val}${m.unit}</b></td><td class=n>${m.status === "in" ? "OK" : m.status === "below" ? "baixo" : "alto"}</td></tr>`).join("");
-    const html = '<!doctype html><meta charset=utf-8><title>' + recipeName + '</title><style>body{font-family:Georgia,serif;color:#3d3a36;max-width:720px;margin:30px auto;padding:0 24px}h1{font-size:25px;margin:0 0 2px}.s{color:#a07d2c;font-size:12px;letter-spacing:2px;text-transform:uppercase}.m{display:flex;gap:20px;font-size:13px;color:#666;margin:8px 0 18px;border-bottom:2px solid #eee;padding-bottom:12px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th{font-size:10px;text-transform:uppercase;color:#a07d2c;text-align:right;padding:6px 8px;border-bottom:1.5px solid #ddd}th:first-child{text-align:left}td{padding:5px 8px;font-size:13px;border-bottom:1px solid #f3f3f3}td.n{text-align:right}.hint{background:#fbf2dd;border-radius:8px;padding:10px 14px;font-size:12px;color:#8a6d1e;margin-bottom:16px}@media print{.hint{display:none}}</style>' +
+    const n = r.nutriPer100;
+    const VDp = { kcal: 2000, carb: 300, prot: 50, fat: 65, sat: 20, fib: 25, sod: 2400 };
+    const vd = (val, ref) => ref ? Math.round((val / ref) * 100) + "%" : "—";
+    const nutriHtml = n ? '<h3 style="font-size:15px">Informação nutricional <span style="font-size:11px;color:#999;font-weight:normal">· porção 100g</span></h3>' +
+      '<table><thead><tr><th>Nutriente</th><th>Por porção</th><th>%VD*</th></tr></thead><tbody>' +
+      [["Valor energético", n.kcal, "kcal", VDp.kcal], ["Carboidratos totais", n.carb, "g", VDp.carb], ["&nbsp;&nbsp;Açúcares totais", n.sug, "g", null], ["&nbsp;&nbsp;Açúcares adicionados", n.sugAdd, "g", null], ["Proteínas", n.prot, "g", VDp.prot], ["Gorduras totais", n.fat, "g", VDp.fat], ["&nbsp;&nbsp;Gorduras saturadas", n.sat, "g", VDp.sat], ["&nbsp;&nbsp;Gorduras trans", n.trans, "g", null], ["Fibra alimentar", n.fib, "g", VDp.fib], ["Sódio", n.sod, "mg", VDp.sod]].map(([l, v, u, ref]) => `<tr><td>${l}</td><td class=n>${Math.round((v||0)*10)/10} ${u}</td><td class=n>${vd(v||0, ref)}</td></tr>`).join("") +
+      '</tbody></table><p style="font-size:10px;color:#999">*% Valores Diários (dieta 2.000 kcal). Estimativa orientativa — não substitui laudo para rótulo comercial.</p>' : "";
+    const html = '<!doctype html><meta charset=utf-8><title>' + recipeName + '</title><style>body{font-family:Georgia,serif;color:#3d3a36;max-width:720px;margin:30px auto;padding:0 24px}h1{font-size:25px;margin:0 0 2px}h3{font-size:15px;margin-top:22px}.s{color:#a07d2c;font-size:12px;letter-spacing:2px;text-transform:uppercase}.m{display:flex;gap:20px;font-size:13px;color:#666;margin:8px 0 18px;border-bottom:2px solid #eee;padding-bottom:12px}table{width:100%;border-collapse:collapse;margin-bottom:18px}th{font-size:10px;text-transform:uppercase;color:#a07d2c;text-align:right;padding:6px 8px;border-bottom:1.5px solid #ddd}th:first-child{text-align:left}td{padding:5px 8px;font-size:13px;border-bottom:1px solid #f3f3f3}td.n{text-align:right}.hint{background:#fbf2dd;border-radius:8px;padding:10px 14px;font-size:12px;color:#8a6d1e;margin-bottom:16px}@media print{.hint{display:none}}</style>' +
+      // 1. Cabeçalho
       '<div class=hint>Vai abrir a janela de impressão. Escolha "Salvar como PDF" (ou imprima direto).</div><div class=s>GelatoLab</div><h1>' + recipeName + '</h1>' + (chef ? '<div style="font-style:italic;color:#7a7264;margin:-2px 0 6px;font-family:Georgia,serif">por ' + chef + (school && school !== "Autoral" ? ' · linha ' + school : '') + '</div>' : (school && school !== "Autoral" ? '<div style="font-style:italic;color:#7a7264;margin:-2px 0 6px">linha ' + school + '</div>' : '')) + '<div class=m><span>' + kind + '</span><span>' + famLabel(family) + '</span><span>' + servingTemp + '°C</span><span>' + (targetWeight >= 1000 ? targetWeight / 1000 + "kg" : targetWeight + "g") + '</span></div>' +
-      '<table><thead><tr><th>Ingrediente</th><th>Peso</th><th>Gord.</th><th>POD</th><th>SLNG</th><th>Sólidos</th><th>PAC</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      // 2. Foto
       (photo ? '<img src="' + photo + '" style="width:100%;max-height:320px;object-fit:cover;border-radius:10px;margin-bottom:16px">' : '') +
-      (notes ? '<h3 style="font-size:15px">Observações</h3><p style="font-size:13px;line-height:1.6;white-space:pre-wrap">' + notes.replace(/</g, "&lt;") + '</p>' : '') +
-      (prep ? '<h3 style="font-size:15px">Modo de preparo</h3><p style="font-size:13px;line-height:1.7;white-space:pre-wrap">' + prep.replace(/</g, "&lt;") + '</p>' : '') +
-      '<h3 style="font-size:15px">Parâmetros de controle</h3><table><thead><tr><th>Verificação</th><th>Mín</th><th>Máx</th><th>Atual</th><th>OK?</th></tr></thead><tbody>' + monHtml + '</tbody></table>';
+      // 3. Ingredientes
+      '<h3>Ingredientes</h3><table><thead><tr><th>Ingrediente</th><th>Peso</th><th>Gord.</th><th>POD</th><th>SLNG</th><th>Sólidos</th><th>PAC</th></tr></thead><tbody>' + rowsHtml + '</tbody></table>' +
+      // 4. Modo de preparo
+      (prep ? '<h3>Modo de preparo</h3><p style="font-size:13px;line-height:1.7;white-space:pre-wrap">' + prep.replace(/</g, "&lt;") + '</p>' : '') +
+      // 5. Observações
+      (notes ? '<h3>Observações</h3><p style="font-size:13px;line-height:1.6;white-space:pre-wrap">' + notes.replace(/</g, "&lt;") + '</p>' : '') +
+      // 6. Tabela nutricional (no fim)
+      nutriHtml;
     // Abre a ficha numa nova aba e dispara a tela de impressão, onde dá para "Salvar como PDF".
     const w = window.open("", "_blank");
     if (!w) { alert("Permita janelas/pop-ups para baixar a ficha."); return; }
@@ -1537,6 +1758,10 @@ export default function GelatoLab({ session }) {
               ))}
             </div>
           </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <NutriTable n={r.nutriPer100} cobPct={r.nutriCobPct} porcao={100} rows={r.rows} nome={recipeName} totalGrams={r.totalGrams} />
         </div>
 
         <div style={{ background: "#fff", borderRadius: 14, padding: "12px 16px", border: `1px solid ${T.line}`, marginBottom: 16 }}>
