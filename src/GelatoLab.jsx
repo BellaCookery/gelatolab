@@ -252,6 +252,21 @@ function compute(items, target, opts = {}) {
   const pacPerKg = (totPac / safeM) * 1000;
   const podPerKg = (totPod / safeM) * 1000;
   const fatPct = (totFat / safeM) * 100, stPct = (totSt / safeM) * 100, sugarPct = (totSugar / safeM) * 100;
+  // === CURVA FÍSICA DE CONGELAMENTO (método CucinaLi/BilanciaLi validado) ===
+  // Frações (0–1) sobre o peso total da mistura
+  const pacFrac = totPac / safeM;        // PAC em fração (ex: 0,407)
+  const slngFrac = totMsnf / safeM;      // sólidos lácteos não gordurosos em fração
+  const h2oFrac = Math.max(0.01, 1 - (totSt / safeM)); // água em fração
+  // Temperatura para uma dada fração f (%) de água congelada
+  const tempParaF = (f) => {
+    const K = (pacFrac * 100) / (h2oFrac * (1 - f / 100)); // concentração na água residual
+    return -0.00009 * K * K - 0.0612 * K - 2.37 * slngFrac;
+  };
+  // varre 0..90% em passos de 5% (para desenhar a curva)
+  const curvaFisica = [];
+  for (let f = 0; f <= 90; f += 5) curvaFisica.push({ f, t: tempParaF(f) });
+  const serveAt = tempParaF(75);    // temperatura de serviço = 75% congelado
+  const quenelleAt = tempParaF(70); // ponto de quenelle = 70% congelado
   // alvos dependentes da temperatura + família (precisam vir ANTES do painel)
   const pacTarget = target.pacOverride ?? pacTargetFor(target.servingTemp, target.family);
   const pacRange = { min: pacTarget - PAC_TOLERANCE, max: pacTarget + PAC_TOLERANCE };
@@ -313,6 +328,7 @@ function compute(items, target, opts = {}) {
     fatPct: round(fatPct, 1), stPct: round(stPct, 1), sugarPct: round(sugarPct, 1),
     msnfPct: round((totMsnf / safeM) * 100, 1),
     pacTarget: round(pacTarget), impliedServingTemp: round(tempForPac(pacPerKg), 1),
+    curvaFisica, serveAt: round(serveAt, 1), quenelleAt: round(quenelleAt, 1),
     costPerKg: round(totCost / (safeM / 1000), 2), costTotal: round(totCost, 2),
     monitor, metrics, suggestions: buildSuggestions(rows, metrics, safeM, opts),
   };
@@ -951,47 +967,40 @@ function MonitorPanel({ monitor, servingTemp, pacTarget, pacNow, suggestions, on
 }
 
 // ---- Curva de congelamento (tema claro) ----
-function Curve({ pacPerKg, servingTemp }) {
-  const { f, Ti } = freezingCurve(pacPerKg);
-  const W = 440, H = 230, padL = 40, padB = 44, padT = 14, padR = 12;
-  const x = (t) => padL + ((t - 0) / (-24 - 0)) * (W - padL - padR);
-  const y = (fr) => padT + (1 - fr) * (H - padT - padB);
-  const pts = []; for (let t = 0; t >= -24; t -= 0.5) pts.push(`${x(t)},${y(f(t))}`);
-  const cur = f(servingTemp), cx = x(servingTemp), cy = y(cur);
-  // PQO: temperatura onde ~75% da água está congelada (ponto ótimo de quenelle)
-  let pqo = -11; for (let t = 0; t >= -24; t -= 0.1) { if (f(t) >= 0.75) { pqo = Math.round(t * 10) / 10; break; } }
-  const pqoX = x(pqo);
-  // zona de quenelle ótima: 70%–80% congelado (faixa dourada)
-  // zona de arenosidade: acima de ~88% congelado o risco de cristais cresce
-  const arenY = y(0.90);
-  const servPct = Math.round(cur * 100);
-  const aviso = cur > 0.82 ? "duro / risco de arenosidade" : cur < 0.55 ? "mole para bolear" : "bom para servir";
-  const avisoCor = (cur > 0.82 || cur < 0.55) ? "#c01f2f" : "#1a7d54";
+function Curve({ curva, serveAt, quenelleAt }) {
+  const pts0 = (curva && curva.length) ? curva : [{ f: 0, t: -2 }, { f: 90, t: -30 }];
+  // eixo X = temperatura (do mais quente ao mais frio); Y = % congelada
+  const tMin = Math.min(...pts0.map((p) => p.t), serveAt) - 1; // mais frio (esquerda→direita: 0 a tMin)
+  const tMax = 0;
+  const W = 440, H = 240, padL = 40, padB = 46, padT = 16, padR = 12;
+  const x = (t) => padL + ((t - tMax) / (tMin - tMax)) * (W - padL - padR);
+  const y = (fr) => padT + (1 - fr / 100) * (H - padT - padB);
+  const pts = pts0.map((p) => `${x(p.t)},${y(p.f)}`);
+  const sx = x(serveAt), sy = y(75);
+  const qx = x(quenelleAt), qy = y(70);
+  // marcas de temperatura no eixo X
+  const ticks = []; const step = Math.ceil(Math.abs(tMin) / 6);
+  for (let t = 0; t >= tMin; t -= step) ticks.push(t);
   return (
     <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)", height: "100%", boxSizing: "border-box" }}>
       <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, color: T.ink, marginBottom: 2 }}>Curva de congelamento</div>
-      <div style={{ fontSize: 12.5, color: T.soft, marginBottom: 10 }}>A {servingTemp}°C, cerca de <b style={{ color: T.gold }}>{servPct}%</b> da água está congelada — <b style={{ color: avisoCor }}>{aviso}</b>.</div>
+      <div style={{ fontSize: 12.5, color: T.soft, marginBottom: 10 }}>Serve a <b style={{ color: T.straw }}>{serveAt}°C</b> (75% congelado) · quenelle a <b style={{ color: T.gold }}>{quenelleAt}°C</b> (70%).</div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%">
-        {[0, 25, 50, 75, 100].map((p) => (<g key={p}><line x1={padL} y1={y(p / 100)} x2={W - padR} y2={y(p / 100)} stroke={T.line} strokeWidth="1" /><text x={padL - 6} y={y(p / 100) + 4} fill={T.soft} fontSize="10" textAnchor="end" fontFamily="'DM Mono', monospace">{p}%</text></g>))}
-        {[0, -6, -11, -18, -24].map((t) => <text key={t} x={x(t)} y={H - padB + 16} fill={T.soft} fontSize="10" textAnchor="middle" fontFamily="'DM Mono', monospace">{t}°</text>)}
-        {/* zona de arenosidade (muito congelado) */}
-        <rect x={padL} y={padT} width={W - padL - padR} height={arenY - padT} fill="#fbeaea" />
-        <text x={W - padR - 4} y={padT + 11} fill="#c87a7a" fontSize="8.5" textAnchor="end" fontStyle="italic">zona de arenosidade</text>
-        {/* zona de quenelle ótima (PQO): 70-80% */}
-        <rect x={padL} y={y(0.80)} width={W - padL - padR} height={y(0.70) - y(0.80)} fill={T.goldBg} />
-        <text x={padL + 4} y={y(0.70) - 3} fill={T.gold} fontSize="8.5" fontStyle="italic">zona de quenelle (PQO)</text>
-        {/* curva */}
-        <path d={"M" + pts.join(" L")} fill="none" stroke={T.gold} strokeWidth="2.5" strokeLinecap="round" />
-        {/* ponto de congelamento (onde começa a congelar) */}
-        {Ti < 0 && Ti > -24 && <g><circle cx={x(Ti)} cy={y(0)} r="4" fill="#fff" stroke={T.ink} strokeWidth="2" /><text x={x(Ti)} y={y(0) - 8} fill={T.ink} fontSize="9" textAnchor="middle" fontFamily="'DM Mono', monospace">{Ti.toFixed(1)}°</text><text x={x(Ti)} y={y(0) - 18} fill={T.soft} fontSize="8" textAnchor="middle">início</text></g>}
-        {/* PQO: linha vertical na zona de quenelle */}
-        <line x1={pqoX} y1={padT} x2={pqoX} y2={H - padB} stroke={T.gold} strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
-        {Math.abs(pqoX - cx) > 46 && <text x={pqoX} y={H - padB + 30} fill={T.gold} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">PQO {pqo}°</text>}
-        {/* temperatura de serviço */}
-        <line x1={cx} y1={padT} x2={cx} y2={H - padB} stroke={T.straw} strokeWidth="1" strokeDasharray="4 4" />
-        <circle cx={cx} cy={cy} r="7" fill={T.straw} /><circle cx={cx} cy={cy} r="7" fill="none" stroke="#fff" strokeWidth="2.5" />
-        <text x={cx} y={cy - 12} fill={T.straw} fontSize="11" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">{servPct}%</text>
-        <text x={cx} y={H - padB + 30} fill={T.straw} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">{Math.abs(pqoX - cx) > 46 ? `serviço ${servingTemp}°` : `serviço ${servingTemp}° = PQO`}</text>
+        {[0, 25, 50, 70, 75, 100].map((p) => (<g key={p}><line x1={padL} y1={y(p)} x2={W - padR} y2={y(p)} stroke={p === 75 || p === 70 ? T.goldBg : T.line} strokeWidth="1" /><text x={padL - 6} y={y(p) + 4} fill={T.soft} fontSize="10" textAnchor="end" fontFamily="'DM Mono', monospace">{p}%</text></g>))}
+        {ticks.map((t) => <text key={t} x={x(t)} y={H - padB + 16} fill={T.soft} fontSize="10" textAnchor="middle" fontFamily="'DM Mono', monospace">{t}°</text>)}
+        {/* zona de quenelle ótima: 70–80% */}
+        <rect x={padL} y={y(80)} width={W - padL - padR} height={y(70) - y(80)} fill={T.goldBg} opacity="0.5" />
+        {/* curva física */}
+        <path d={"M" + pts.join(" L")} fill="none" stroke={T.gold} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {/* quenelle (70%) */}
+        <line x1={qx} y1={padT} x2={qx} y2={H - padB} stroke={T.gold} strokeWidth="1" strokeDasharray="2 3" opacity="0.6" />
+        <circle cx={qx} cy={qy} r="5" fill="#fff" stroke={T.gold} strokeWidth="2" />
+        <text x={qx} y={H - padB + 32} fill={T.gold} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">quenelle {quenelleAt}°</text>
+        {/* serviço (75%) */}
+        <line x1={sx} y1={padT} x2={sx} y2={H - padB} stroke={T.straw} strokeWidth="1" strokeDasharray="4 4" />
+        <circle cx={sx} cy={sy} r="7" fill={T.straw} /><circle cx={sx} cy={sy} r="7" fill="none" stroke="#fff" strokeWidth="2.5" />
+        <text x={sx} y={sy - 12} fill={T.straw} fontSize="10" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">75%</text>
+        <text x={sx} y={H - padB + 44} fill={T.straw} fontSize="9" textAnchor="middle" fontWeight="700" fontFamily="'DM Mono', monospace">serviço {serveAt}°</text>
       </svg>
     </div>
   );
@@ -1469,7 +1478,7 @@ export default function GelatoLab({ session }) {
                 <input value={chef} onChange={(e) => setChef(e.target.value)} placeholder="assinatura do chef" style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 13.5, fontStyle: "italic", background: "none", border: "none", borderBottom: `1px solid ${T.line}`, color: T.ink, padding: "1px 2px", outline: "none", width: 200 }} />
               </div>
               <div style={{ display: "flex", gap: 18, marginTop: 12, flexWrap: "wrap" }}>
-                {[["Serve a", `${r.impliedServingTemp}°C`], ["PAC", r.pacPerKg], ["POD", r.podPerKg], ["Sólidos", `${r.stPct}%`]].map(([k, v], i) => (
+                {[["Serve a", `${r.serveAt}°C`], ["PAC", r.pacPerKg], ["POD", r.podPerKg], ["Sólidos", `${r.stPct}%`]].map(([k, v], i) => (
                   <div key={i}>
                     <div style={{ fontSize: 9.5, letterSpacing: 0.5, textTransform: "uppercase", color: T.soft, fontWeight: 600 }}>{k}</div>
                     <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 16, fontWeight: 500, color: T.ink, marginTop: 1 }}>{v}</div>
@@ -1516,11 +1525,11 @@ export default function GelatoLab({ session }) {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 16, alignItems: "stretch" }}>
-          <Curve pacPerKg={r.pacPerKg} servingTemp={servingTemp} />
+          <Curve curva={r.curvaFisica} serveAt={r.serveAt} quenelleAt={r.quenelleAt} />
           <div style={{ background: "#fff", border: `1px solid ${T.line}`, borderRadius: 16, padding: 16, boxShadow: "0 1px 3px rgba(60,58,54,.04)", height: "100%", boxSizing: "border-box" }}>
             <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Resumo</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {[["Serve a", `${r.impliedServingTemp}°C`], ["PAC", `${r.pacPerKg} (alvo ${r.pacTarget})`], ["POD (doçura)", r.podPerKg], ["Sólidos totais", `${r.stPct}%`], ["Custo estimado", `R$${r.costPerKg}/kg`]].map(([k, v], i) => (
+              {[["Serve a", `${r.serveAt}°C`], ["Quenelle", `${r.quenelleAt}°C`], ["PAC", `${r.pacPerKg} (${(r.pacPerKg/10).toFixed(1)}% AFP)`], ["POD (doçura)", `${r.podPerKg} (${(r.podPerKg/10).toFixed(1)}% SP)`], ["Sólidos totais", `${r.stPct}%`], ["Custo estimado", `R$${r.costPerKg}/kg`]].map(([k, v], i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5, paddingBottom: 8, borderBottom: i < 4 ? `1px solid ${T.bg}` : "none" }}><span style={{ color: T.soft }}>{k}</span><span style={{ fontFamily: "'DM Mono', monospace", fontWeight: 500 }}>{v}</span></div>
               ))}
             </div>
